@@ -9,6 +9,13 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
 
+  const [title, setTitle] = useState('')
+  const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState('GBP')
+  const [category, setCategory] = useState('Meals')
+  const [country, setCountry] = useState('United Kingdom')
+  const [expenseDate, setExpenseDate] = useState('')
+
   useEffect(() => {
     fetchExpenses()
   }, [])
@@ -28,20 +35,102 @@ export default function ExpensesPage() {
     setLoading(false)
   }
 
+  async function addExpense(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (!title || !amount || !expenseDate) return
+
+    await supabase.from('expenses').insert({
+      title,
+      amount: Number(amount),
+      currency,
+      category,
+      status: 'Pending',
+      reimbursable: false,
+      country,
+      expense_date: expenseDate,
+    })
+
+    setTitle('')
+    setAmount('')
+    setExpenseDate('')
+
+    fetchExpenses()
+  }
+
   async function deleteExpense(id: string) {
     await supabase.from('expenses').delete().eq('id', id)
     fetchExpenses()
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 max-w-3xl">
       <h1 className="text-2xl font-semibold mb-4">Expenses</h1>
 
+      {/* ADD EXPENSE FORM */}
+      <form onSubmit={addExpense} className="mb-8 space-y-4 border p-4 rounded">
+        <h2 className="font-medium">Add Expense</h2>
+
+        <input
+          className="w-full border p-2 rounded"
+          placeholder="Title (e.g. Evening meal)"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+        />
+
+        <input
+          type="number"
+          step="0.01"
+          className="w-full border p-2 rounded"
+          placeholder="Amount"
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+        />
+
+        <select
+          className="w-full border p-2 rounded"
+          value={currency}
+          onChange={e => setCurrency(e.target.value)}
+        >
+          <option value="GBP">GBP</option>
+          <option value="EUR">EUR</option>
+          <option value="USD">USD</option>
+          <option value="CHF">CHF</option>
+        </select>
+
+        <input
+          className="w-full border p-2 rounded"
+          placeholder="Category (e.g. Meals)"
+          value={category}
+          onChange={e => setCategory(e.target.value)}
+        />
+
+        <input
+          className="w-full border p-2 rounded"
+          placeholder="Country"
+          value={country}
+          onChange={e => setCountry(e.target.value)}
+        />
+
+        <input
+          type="date"
+          className="w-full border p-2 rounded"
+          value={expenseDate}
+          onChange={e => setExpenseDate(e.target.value)}
+        />
+
+        <button
+          type="submit"
+          className="bg-black text-white px-4 py-2 rounded"
+        >
+          Add Expense
+        </button>
+      </form>
+
+      {/* EXPENSE LIST */}
       {loading && <p>Loading…</p>}
 
-      {!loading && expenses.length === 0 && (
-        <p>No expenses yet.</p>
-      )}
+      {!loading && expenses.length === 0 && <p>No expenses yet.</p>}
 
       <ul className="space-y-3">
         {expenses.map(expense => (
