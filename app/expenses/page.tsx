@@ -5,6 +5,48 @@ import { supabase } from '@/lib/supabase'
 import { Expense } from '@/types/expense'
 import { formatMoney } from '@/lib/currency'
 
+function exportToCSV(expenses: Expense[]) {
+  const headers = [
+    'Title',
+    'Merchant',
+    'Amount',
+    'Currency',
+    'Category',
+    'Status',
+    'Reimbursable',
+    'Country',
+    'Notes',
+    'Date',
+  ]
+
+  const rows = expenses.map(e => [
+    e.title,
+    e.merchant ?? '',
+    e.amount,
+    e.currency,
+    e.category,
+    e.status,
+    e.reimbursable ? 'Yes' : 'No',
+    e.country,
+    e.notes ?? '',
+    e.expense_date,
+  ])
+
+  const csvContent =
+    [headers, ...rows].map(r => r.join(',')).join('\n')
+
+  const blob = new Blob([csvContent], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'expenses.csv'
+  a.click()
+
+  URL.revokeObjectURL(url)
+}
+
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -126,6 +168,14 @@ export default function ExpensesPage() {
           Add Expense
         </button>
       </form>
+
+<button
+  onClick={() => exportToCSV(expenses)}
+  className="mb-4 border px-3 py-1 rounded text-sm"
+>
+  Export CSV
+</button>
+
 
       {/* EXPENSE LIST */}
       {loading && <p>Loading…</p>}
