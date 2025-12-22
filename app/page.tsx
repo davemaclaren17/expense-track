@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Expense } from '@/types/expense'
 import { formatMoney } from '@/lib/currency'
+import Link from 'next/link'
+
 
 type Totals = {
   [currency: string]: number
@@ -55,52 +57,100 @@ export default function DashboardPage() {
   )
 
   return (
-    <div className="p-6 max-w-4xl">
-      <h1 className="text-2xl font-semibold mb-6">Dashboard</h1>
+  <div className="px-4 py-6 max-w-4xl mx-auto space-y-6">
+    {/* Header */}
+    <div className="flex items-center justify-between">
+      <h1 className="text-xl font-semibold">Dashboard</h1>
 
-      {loading && <p>Loading…</p>}
+      <Link
+        href="/expenses"
+        className="bg-black text-white px-4 py-2 rounded text-sm"
+      >
+        + Add Expense
+      </Link>
+    </div>
 
-      {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <StatCard title="This Month" totals={thisMonthTotals} />
-          <StatCard title="Reimbursed" totals={reimbursedTotals} />
+    {loading && <p>Loading…</p>}
+
+    {!loading && (
+      <div className="space-y-6">
+        {/* Primary Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <StatCard
-            title="Total Expenses"
-            totals={totalsByCurrency()}
+            title="This Month"
+            subtitle="Spending"
+            totals={thisMonthTotals}
+            highlight
           />
+
           <StatCard
-            title="Pending Count"
+            title="Pending"
+            subtitle="Expenses"
             value={expenses.filter(e => e.status === 'Pending').length}
           />
         </div>
-      )}
-    </div>
-  )
+
+        {/* Secondary Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <StatCard
+            title="Reimbursed"
+            subtitle="Total"
+            totals={reimbursedTotals}
+          />
+
+          <StatCard
+            title="All Time"
+            subtitle="Expenses"
+            totals={totalsByCurrency()}
+          />
+        </div>
+      </div>
+    )}
+  </div>
+)
+
 }
 
 function StatCard({
   title,
+  subtitle,
   totals,
   value,
+  highlight = false,
 }: {
   title: string
+  subtitle?: string
   totals?: Totals
   value?: number
+  highlight?: boolean
 }) {
   return (
-    <div className="border rounded p-4">
-      <h2 className="text-sm text-gray-500 mb-2">{title}</h2>
+    <div
+      className={`rounded-xl border p-4 ${
+        highlight ? 'bg-gray-50 border-gray-300' : 'bg-white'
+      }`}
+    >
+      <div className="mb-2">
+        <p className="text-sm text-gray-500">{title}</p>
+        {subtitle && (
+          <p className="text-xs text-gray-400">{subtitle}</p>
+        )}
+      </div>
 
       {totals &&
         Object.entries(totals).map(([currency, amount]) => (
-          <p key={currency} className="text-lg font-semibold">
+          <p
+            key={currency}
+            className="text-xl font-semibold leading-tight"
+          >
             {formatMoney(amount, currency)}
           </p>
         ))}
 
       {value !== undefined && (
-        <p className="text-lg font-semibold">{value}</p>
+        <p className="text-xl font-semibold">{value}</p>
       )}
     </div>
   )
 }
+

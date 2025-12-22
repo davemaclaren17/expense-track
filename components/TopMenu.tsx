@@ -2,42 +2,51 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 export default function TopMenu() {
   const [open, setOpen] = useState(false)
+  const pathname = usePathname()
+
+  const linkClass = (path: string) =>
+    `block px-4 py-3 text-sm ${
+      pathname === path ? 'bg-gray-100 font-medium' : ''
+    }`
 
   return (
-    <div className="border-b px-6 py-3 flex justify-between items-center">
-      <div className="font-semibold">Expense Tracker</div>
+    <header className="sticky top-0 z-50 bg-white border-b">
+      <div className="px-4 py-3 flex justify-between items-center max-w-4xl mx-auto">
+        <div className="font-semibold text-lg">Expense Tracker</div>
 
-      <div className="relative">
         <button
           onClick={() => setOpen(!open)}
-          className="border px-3 py-1 rounded text-sm"
+          className="border px-4 py-2 rounded text-sm"
         >
-          Menu ▾
+          ☰
         </button>
+      </div>
 
-        {open && (
-          <div className="absolute right-0 mt-2 w-40 border rounded bg-white shadow">
+      {open && (
+        <nav className="border-t bg-white">
+          <div className="max-w-4xl mx-auto">
             <Link
               href="/"
-              className="block px-4 py-2 hover:bg-gray-100"
               onClick={() => setOpen(false)}
+              className={linkClass('/')}
             >
               Dashboard
             </Link>
 
             <Link
               href="/expenses"
-              className="block px-4 py-2 hover:bg-gray-100"
               onClick={() => setOpen(false)}
+              className={linkClass('/expenses')}
             >
               Expenses
             </Link>
           </div>
-        )}
-      </div>
-    </div>
+        </nav>
+      )}
+    </header>
   )
 }
