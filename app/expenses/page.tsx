@@ -46,7 +46,6 @@ function exportToCSV(expenses: Expense[]) {
   URL.revokeObjectURL(url)
 }
 
-
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,7 +78,6 @@ export default function ExpensesPage() {
 
   async function addExpense(e: React.FormEvent) {
     e.preventDefault()
-
     if (!title || !amount || !expenseDate) return
 
     await supabase.from('expenses').insert({
@@ -96,7 +94,6 @@ export default function ExpensesPage() {
     setTitle('')
     setAmount('')
     setExpenseDate('')
-
     fetchExpenses()
   }
 
@@ -106,15 +103,28 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <h1 className="text-2xl font-semibold mb-4">Expenses</h1>
+    <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-semibold">Expenses</h1>
 
-      {/* ADD EXPENSE FORM */}
-      <form onSubmit={addExpense} className="mb-8 space-y-4 border p-4 rounded">
+        <button
+          onClick={() => exportToCSV(expenses)}
+          className="border px-3 py-2 rounded text-sm"
+        >
+          Export CSV
+        </button>
+      </div>
+
+      {/* Add Expense */}
+      <form
+        onSubmit={addExpense}
+        className="space-y-4 border rounded-xl p-4 bg-white"
+      >
         <h2 className="font-medium">Add Expense</h2>
 
         <input
-          className="w-full border p-2 rounded"
+          className="w-full border p-3 rounded"
           placeholder="Title (e.g. Evening meal)"
           value={title}
           onChange={e => setTitle(e.target.value)}
@@ -123,32 +133,34 @@ export default function ExpensesPage() {
         <input
           type="number"
           step="0.01"
-          className="w-full border p-2 rounded"
+          className="w-full border p-3 rounded"
           placeholder="Amount"
           value={amount}
           onChange={e => setAmount(e.target.value)}
         />
 
-        <select
-          className="w-full border p-2 rounded"
-          value={currency}
-          onChange={e => setCurrency(e.target.value)}
-        >
-          <option value="GBP">GBP</option>
-          <option value="EUR">EUR</option>
-          <option value="USD">USD</option>
-          <option value="CHF">CHF</option>
-        </select>
+        <div className="grid grid-cols-2 gap-3">
+          <select
+            className="border p-3 rounded"
+            value={currency}
+            onChange={e => setCurrency(e.target.value)}
+          >
+            <option>GBP</option>
+            <option>EUR</option>
+            <option>USD</option>
+            <option>CHF</option>
+          </select>
+
+          <input
+            className="border p-3 rounded"
+            placeholder="Category"
+            value={category}
+            onChange={e => setCategory(e.target.value)}
+          />
+        </div>
 
         <input
-          className="w-full border p-2 rounded"
-          placeholder="Category (e.g. Meals)"
-          value={category}
-          onChange={e => setCategory(e.target.value)}
-        />
-
-        <input
-          className="w-full border p-2 rounded"
+          className="w-full border p-3 rounded"
           placeholder="Country"
           value={country}
           onChange={e => setCountry(e.target.value)}
@@ -156,62 +168,57 @@ export default function ExpensesPage() {
 
         <input
           type="date"
-          className="w-full border p-2 rounded"
+          className="w-full border p-3 rounded"
           value={expenseDate}
           onChange={e => setExpenseDate(e.target.value)}
         />
 
         <button
           type="submit"
-          className="bg-black text-white px-4 py-2 rounded"
+          className="w-full bg-black text-white py-3 rounded"
         >
           Add Expense
         </button>
       </form>
 
-<button
-  onClick={() => exportToCSV(expenses)}
-  className="mb-4 border px-3 py-1 rounded text-sm"
->
-  Export CSV
-</button>
-
-
-      {/* EXPENSE LIST */}
+      {/* Expense List */}
       {loading && <p>Loading…</p>}
-
       {!loading && expenses.length === 0 && <p>No expenses yet.</p>}
 
-      <ul className="space-y-3">
+      <div className="space-y-3">
         {expenses.map(expense => (
-          <li
+          <div
             key={expense.id}
-            className="border rounded p-4 flex justify-between items-center"
+            className="border rounded-xl p-4 bg-white"
           >
-            <div>
-              <p className="font-medium">{expense.title}</p>
-              <p className="text-sm text-gray-500">
-                {expense.category} · {expense.country} · {expense.status}
-              </p>
-              <p className="text-sm text-gray-400">
-                {expense.expense_date}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <p className="font-semibold">
+            <div className="flex justify-between items-start mb-1">
+              <p className="font-medium">
                 {formatMoney(expense.amount, expense.currency)}
               </p>
+              <span className="text-xs text-gray-400">
+                {expense.expense_date}
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-700">
+              {expense.title}
+            </p>
+
+            <div className="flex justify-between items-center mt-2 text-xs text-gray-400">
+              <span>
+                {expense.category} · {expense.country}
+              </span>
+
               <button
                 onClick={() => deleteExpense(expense.id)}
-                className="text-red-600 text-sm"
+                className="text-red-600"
               >
                 Delete
               </button>
             </div>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   )
 }
