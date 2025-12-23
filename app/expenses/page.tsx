@@ -1,46 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { Expense } from '@/types/expense'
 import { formatMoney } from '@/lib/currency'
 import { useToast } from '@/components/ToastProvider'
 
-
-type ExpenseWithReceipt = Expense & { receipt_path: string | null }
-
-function toCSV(expenses: ExpenseWithReceipt[]) {
-  const headers = [
-    'Title',
-    'Merchant',
-    'Amount',
-    'Currency',
-    'Category',
-    'Status',
-    'Reimbursable',
-    'Country',
-    'Notes',
-    'Date',
-    'ReceiptPath',
-  ]
-
-  const rows = expenses.map(e => [
-    e.title,
-    e.merchant ?? '',
-    e.amount,
-    e.currency,
-    e.category,
-    e.status,
-    e.reimbursable ? 'Yes' : 'No',
-    e.country,
-    e.notes ?? '',
-    e.expense_date,
-    e.receipt_path ?? '',
-  ])
-
-  return [headers, ...rows].map(r => r.join(',')).join('\n')
+type ExpenseRow = Expense & {
+  receipt_path: string | null
+  business_trip: string | null
 }
+
+const CATEGORY_OPTIONS = [
+  'Mileage',
+  'Hotel',
+  'Food & Drinks',
+] as const
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -51,19 +27,61 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+function toCSV(expenses: ExpenseRow[]) {
+  const headers = [
+    'BusinessTrip',
+    'Description',
+    'VendorMerchant',
+    'Notes',
+    'Amount',
+    'Currency',
+    'Category',
+    'Status',
+    'Country',
+    'Date',
+    'ReceiptPath',
+  ]
+
+  const rows = expenses.map(e => [
+    e.business_trip ?? '',
+    e.title ?? '',
+    e.merchant ?? '',
+    e.notes ?? '',
+    e.amount,
+    e.currency,
+    e.category,
+    e.status,
+    e.country,
+    e.expense_date,
+    e.receipt_path ?? '',
+  ])
+
+  return [headers, ...rows].map(r => r.join(',')).join('\n')
+}
+
 export default function ExpensesPage() {
   const { showToast } = useToast()
 
-  const [expenses, setExpenses] = useState<ExpenseWithReceipt[]>([])
+  const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const [title, setTitle] = useState('')
+  // form fields
+  const [businessTrip, setBusinessTrip] = useState('')
+  const [description, setDescription] = useState('')
+  const [vendor, setVendor] = useState('')
+  const [notes, setNotes] = useState('')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('GBP')
-  const [category, setCategory] = useState('Meals')
+  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]>('Food & Drinks')
   const [country, setCountry] = useState('United Kingdom')
   const [expenseDate, setExpenseDate] = useState('')
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
+
+  const canSave = useMemo(() => {
+    return description.trim() && amount.trim() && expenseDate.trim()
+  }, [description, amount, expenseDate])
 
   useEffect(() => {
     fetchExpenses()
@@ -71,30 +89,45 @@ export default function ExpensesPage() {
 
   async function fetchExpenses() {
     setLoading(true)
-
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('expenses')
       .select('*')
       .order('expense_date', { ascending: false })
 
-    if (!error && data) setExpenses(data as ExpenseWithReceipt[])
+    if (data) setExpenses(data as ExpenseRow[])
     setLoading(false)
+  }
+
+  function resetForm() {
+    setBusinessTrip('')
+    setDescription('')
+    setVendor('')
+    setNotes('')
+    setAmount('')
+    setCurrency('GBP')
+    setCategory('Food & Drinks')
+    setCountry('United Kingdom')
+    setExpenseDate('')
+    setReceiptFile(null)
   }
 
   async function addExpense(e: React.FormEvent) {
     e.preventDefault()
-    if (!title || !amount || !expenseDate) return
+    if (!canSave || saving) return
 
-    // 1) Insert expense first (so we get an id)
-    const { data: inserted, error: insertError } = await supabase
+    setSaving(true)
+
+    const { data: inserted, error } = await supabase
       .from('expenses')
       .insert({
-        title,
+        business_trip: businessTrip || null,
+        title: description,
+        merchant: vendor || null,
+        notes: notes || null,
         amount: Number(amount),
         currency,
         category,
         status: 'Pending',
-        reimbursable: false,
         country,
         expense_date: expenseDate,
         receipt_path: null,
@@ -102,218 +135,151 @@ export default function ExpensesPage() {
       .select('*')
       .single()
 
-    if (insertError || !inserted) {
-      alert('Could not save expense. Please try again.')
+    if (error || !inserted) {
+      showToast('error', 'Failed to save expense')
+      setSaving(false)
       return
     }
 
-    // 2) Upload receipt (optional)
     if (receiptFile) {
-      const ext = receiptFile.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const safeExt = ext.replace(/[^a-z0-9]/g, '') || 'jpg'
-      const path = `${inserted.id}.${safeExt}`
+      const ext = receiptFile.name.split('.').pop() || 'jpg'
+      const path = `${inserted.id}.${ext}`
 
       const { error: uploadError } = await supabase.storage
         .from('receipts')
-        .upload(path, receiptFile, {
-          upsert: true,
-          contentType: receiptFile.type || 'image/jpeg',
-        })
+        .upload(path, receiptFile, { upsert: true })
 
       if (!uploadError) {
-        // 3) Store receipt path on the expense row
         await supabase.from('expenses').update({ receipt_path: path }).eq('id', inserted.id)
+        showToast('success', 'Expense and receipt saved ✅')
       } else {
-        alert(`Receipt upload failed: ${uploadError.message}`)
-        }
-
+        showToast('error', uploadError.message)
+      }
+    } else {
+      showToast('success', 'Expense saved ✅')
     }
 
-    setTitle('')
-    setAmount('')
-    setExpenseDate('')
-    setReceiptFile(null)
-
+    setSaving(false)
+    setOpen(false)
+    resetForm()
     fetchExpenses()
   }
 
-  async function deleteExpense(expense: ExpenseWithReceipt) {
-    // delete receipt first (if any)
+  async function deleteExpense(expense: ExpenseRow) {
     if (expense.receipt_path) {
       await supabase.storage.from('receipts').remove([expense.receipt_path])
     }
+
     await supabase.from('expenses').delete().eq('id', expense.id)
+    showToast('success', 'Expense deleted')
     fetchExpenses()
   }
 
   async function exportZIP() {
     const zip = new JSZip()
+    zip.file('expenses.csv', toCSV(expenses))
 
-    // CSV
-    const csv = toCSV(expenses)
-    zip.file('expenses.csv', csv)
-
-    // Receipts folder
-    const receiptsFolder = zip.folder('receipts')
-
-    // Download receipts into the zip (only those that exist)
-    for (const exp of expenses) {
-      if (!exp.receipt_path) continue
-      const { data, error } = await supabase.storage.from('receipts').download(exp.receipt_path)
-      if (!error && data) {
-        receiptsFolder?.file(exp.receipt_path, data)
-      }
+    const folder = zip.folder('receipts')
+    for (const e of expenses) {
+      if (!e.receipt_path) continue
+      const { data } = await supabase.storage.from('receipts').download(e.receipt_path)
+      if (data) folder?.file(e.receipt_path, data)
     }
 
     const blob = await zip.generateAsync({ type: 'blob' })
     downloadBlob(blob, 'expenses_export.zip')
-  }
-
-  async function openReceipt(receiptPath: string) {
-    // For public bucket: create public URL
-    const { data } = supabase.storage.from('receipts').getPublicUrl(receiptPath)
-    if (data?.publicUrl) window.open(data.publicUrl, '_blank')
+    showToast('success', 'Export downloaded')
   }
 
   return (
     <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Expenses</h1>
-
-        <button
-          onClick={exportZIP}
-          className="border px-3 py-2 rounded text-sm"
-        >
-          Export (CSV + Receipts)
-        </button>
+        <div className="flex gap-2">
+          <button onClick={exportZIP} className="border px-3 py-2 rounded text-sm">
+            Export
+          </button>
+          <button onClick={() => setOpen(true)} className="bg-black text-white px-3 py-2 rounded text-sm">
+            + Add Expense
+          </button>
+        </div>
       </div>
 
-      {/* Add Expense */}
-      <form
-        onSubmit={addExpense}
-        className="space-y-4 border rounded-xl p-4 bg-white"
-      >
-        <h2 className="font-medium">Add Expense</h2>
-
-        <input
-          className="w-full border p-3 rounded"
-          placeholder="Title (e.g. Evening meal)"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-        />
-
-        <input
-          type="number"
-          step="0.01"
-          className="w-full border p-3 rounded"
-          placeholder="Amount"
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-        />
-
-        <div className="grid grid-cols-2 gap-3">
-          <select
-            className="border p-3 rounded"
-            value={currency}
-            onChange={e => setCurrency(e.target.value)}
-          >
-            <option>GBP</option>
-            <option>EUR</option>
-            <option>USD</option>
-            <option>CHF</option>
-          </select>
-
-          <input
-            className="border p-3 rounded"
-            placeholder="Category"
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-          />
-        </div>
-
-        <input
-          className="w-full border p-3 rounded"
-          placeholder="Country"
-          value={country}
-          onChange={e => setCountry(e.target.value)}
-        />
-
-        <input
-          type="date"
-          className="w-full border p-3 rounded"
-          value={expenseDate}
-          onChange={e => setExpenseDate(e.target.value)}
-        />
-
-        {/* Receipt upload */}
-        <div className="space-y-2">
-          <label className="text-sm text-gray-600">Receipt image (optional)</label>
-          <input
-            type="file"
-            accept="image/*"
-            className="w-full border p-3 rounded"
-            onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-          />
-          {receiptFile && (
-            <p className="text-xs text-gray-500">Selected: {receiptFile.name}</p>
-          )}
-        </div>
-
-        <button
-          type="submit"
-          className="w-full bg-black text-white py-3 rounded"
-        >
-          Add Expense
-        </button>
-      </form>
-
-      {/* Expense List */}
       {loading && <p>Loading…</p>}
-      {!loading && expenses.length === 0 && <p>No expenses yet.</p>}
 
       <div className="space-y-3">
-        {expenses.map(expense => (
-          <div
-            key={expense.id}
-            className="border rounded-xl p-4 bg-white"
-          >
-            <div className="flex justify-between items-start mb-1">
-              <p className="font-medium">
-                {formatMoney(expense.amount, expense.currency)}
-              </p>
-              <span className="text-xs text-gray-400">
-                {expense.expense_date}
-              </span>
+        {expenses.map(e => (
+          <div key={e.id} className="border rounded-xl p-4 bg-white">
+            <div className="flex justify-between mb-1">
+              <p className="font-medium">{formatMoney(e.amount, e.currency)}</p>
+              <span className="text-xs text-gray-400">{e.expense_date}</span>
             </div>
-
-            <p className="text-sm text-gray-700">{expense.title}</p>
-
-            <div className="flex justify-between items-center mt-2 text-xs text-gray-400">
-              <span>{expense.category} · {expense.country}</span>
-
-              <div className="flex items-center gap-3">
-                {expense.receipt_path && (
-                  <button
-                    onClick={() => openReceipt(expense.receipt_path!)}
-                    className="text-blue-600"
-                    type="button"
-                  >
-                    Receipt
-                  </button>
-                )}
-                <button
-                  onClick={() => deleteExpense(expense)}
-                  className="text-red-600"
-                  type="button"
-                >
-                  Delete
-                </button>
-              </div>
+            <p className="text-sm">{e.title}</p>
+            <div className="mt-2 flex justify-between text-xs text-gray-400">
+              <span>{e.category}</span>
+              <button onClick={() => deleteExpense(e)} className="text-red-600">
+                Delete
+              </button>
             </div>
           </div>
         ))}
       </div>
+
+      {/* MODAL */}
+      {open && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 flex justify-center items-start p-4">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow border max-h-[90vh] flex flex-col">
+              <div className="flex justify-between items-center px-5 py-4 border-b">
+                <h2 className="text-lg font-semibold">Add New Expense</h2>
+                <button onClick={() => setOpen(false)} className="text-xl">×</button>
+              </div>
+
+              <div className="overflow-y-auto p-5">
+                <form onSubmit={addExpense} className="space-y-4">
+                  <input type="file" accept="image/*" onChange={e => setReceiptFile(e.target.files?.[0] ?? null)} />
+
+                  <input className="w-full border p-3 rounded-xl" placeholder="Business Trip"
+                    value={businessTrip} onChange={e => setBusinessTrip(e.target.value)} />
+
+                  <input className="w-full border p-3 rounded-xl" placeholder="Description *"
+                    value={description} onChange={e => setDescription(e.target.value)} required />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <input type="number" className="border p-3 rounded-xl" placeholder="Amount"
+                      value={amount} onChange={e => setAmount(e.target.value)} required />
+                    <select className="border p-3 rounded-xl" value={currency} onChange={e => setCurrency(e.target.value)}>
+                      <option>GBP</option><option>EUR</option><option>USD</option><option>CHF</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <select className="border p-3 rounded-xl" value={category} onChange={e => setCategory(e.target.value as any)}>
+                      {CATEGORY_OPTIONS.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                    <input type="date" className="border p-3 rounded-xl"
+                      value={expenseDate} onChange={e => setExpenseDate(e.target.value)} required />
+                  </div>
+
+                  <input className="w-full border p-3 rounded-xl" placeholder="Vendor / Merchant"
+                    value={vendor} onChange={e => setVendor(e.target.value)} />
+
+                  <input className="w-full border p-3 rounded-xl" placeholder="Notes"
+                    value={notes} onChange={e => setNotes(e.target.value)} />
+
+                  <button type="submit" disabled={!canSave || saving}
+                    className="w-full bg-black text-white py-3 rounded-xl">
+                    {saving ? 'Saving…' : 'Add Expense'}
+                  </button>
+
+                  <div className="h-6" />
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
