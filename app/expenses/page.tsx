@@ -5,6 +5,8 @@ import JSZip from 'jszip'
 import { supabase } from '@/lib/supabase'
 import { Expense } from '@/types/expense'
 import { formatMoney } from '@/lib/currency'
+import { useToast } from '@/components/ToastProvider'
+
 
 type ExpenseWithReceipt = Expense & { receipt_path: string | null }
 
@@ -50,6 +52,8 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export default function ExpensesPage() {
+  const { showToast } = useToast()
+
   const [expenses, setExpenses] = useState<ExpenseWithReceipt[]>([])
   const [loading, setLoading] = useState(true)
 

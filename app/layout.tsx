@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import TopMenu from '@/components/TopMenu'
+import ToastProvider from '@/components/ToastProvider'
+
 
 
 const geistSans = Geist({
@@ -26,12 +28,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <TopMenu />
-        {children}
-      </body>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <ToastProvider>
+    <TopMenu />
+    {children}
+  </ToastProvider>
+</body>
+
     </html>
   );
 }
