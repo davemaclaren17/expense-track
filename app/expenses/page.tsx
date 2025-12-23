@@ -120,8 +120,9 @@ export default function ExpensesPage() {
         // 3) Store receipt path on the expense row
         await supabase.from('expenses').update({ receipt_path: path }).eq('id', inserted.id)
       } else {
-        alert('Expense saved, but receipt upload failed. You can re-add it by editing later (we can add that next).')
-      }
+        alert(`Receipt upload failed: ${uploadError.message}`)
+        }
+
     }
 
     setTitle('')
