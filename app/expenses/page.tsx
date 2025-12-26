@@ -16,6 +16,17 @@ const CATEGORY_OPTIONS = [
   'Mileage',
   'Hotel',
   'Food & Drinks',
+  'Air Fare',
+  'Bus Fare',
+  'Car Parking',
+  'Car Rental',
+  'Fuel',
+  'Railfare',
+  'Toll Charges',
+  'Tube',
+  'Taxi',
+  'Phone bill',
+  'Other',
 ] as const
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -238,7 +249,32 @@ export default function ExpensesPage() {
 
               <div className="overflow-y-auto p-5">
                 <form onSubmit={addExpense} className="space-y-4">
-                  <input type="file" accept="image/*" onChange={e => setReceiptFile(e.target.files?.[0] ?? null)} />
+                  {/* Receipt upload */}
+<div className="space-y-2">
+  <label className="text-sm font-medium">Receipt Image</label>
+
+  <label className="block cursor-pointer">
+    <input
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+    />
+
+    <div className="border-2 border-dashed rounded-xl p-6 text-center text-gray-500">
+      <div className="text-2xl mb-2">🧾</div>
+      <div className="font-medium">Click to upload receipt</div>
+      <div className="text-xs text-gray-400">PNG, JPG up to 10MB</div>
+
+      {receiptFile && (
+        <div className="mt-2 text-xs text-gray-600">
+          Selected: {receiptFile.name}
+        </div>
+      )}
+    </div>
+  </label>
+</div>
+
 
                   <input className="w-full border p-3 rounded-xl" placeholder="Business Trip"
                     value={businessTrip} onChange={e => setBusinessTrip(e.target.value)} />
