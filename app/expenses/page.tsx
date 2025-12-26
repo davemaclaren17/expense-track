@@ -12,22 +12,7 @@ type ExpenseRow = Expense & {
   business_trip: string | null
 }
 
-const CATEGORY_OPTIONS = [
-  'Mileage',
-  'Hotel',
-  'Food & Drinks',
-  'Air Fare',
-  'Bus Fare',
-  'Car Parking',
-  'Car Rental',
-  'Fuel',
-  'Railfare',
-  'Toll Charges',
-  'Tube',
-  'Taxi',
-  'Phone bill',
-  'Other',
-] as const
+const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks'] as const
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -75,10 +60,11 @@ export default function ExpensesPage() {
 
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
 
-  // form fields
+  // modal
+  const [open, setOpen] = useState(false)
+
+  // form
   const [businessTrip, setBusinessTrip] = useState('')
   const [description, setDescription] = useState('')
   const [vendor, setVendor] = useState('')
@@ -89,23 +75,36 @@ export default function ExpensesPage() {
   const [country, setCountry] = useState('United Kingdom')
   const [expenseDate, setExpenseDate] = useState('')
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const canSave = useMemo(() => {
-    return description.trim() && amount.trim() && expenseDate.trim()
+    return description.trim().length > 0 && amount.trim().length > 0 && expenseDate.trim().length > 0
   }, [description, amount, expenseDate])
 
   useEffect(() => {
     fetchExpenses()
   }, [])
 
+  // Prevent background scroll on iPhone when modal open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [open])
+
   async function fetchExpenses() {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('expenses')
       .select('*')
       .order('expense_date', { ascending: false })
 
-    if (data) setExpenses(data as ExpenseRow[])
+    if (!error && data) setExpenses(data as ExpenseRow[])
     setLoading(false)
   }
 
@@ -124,21 +123,26 @@ export default function ExpensesPage() {
 
   async function addExpense(e: React.FormEvent) {
     e.preventDefault()
-    if (!canSave || saving) return
+    if (!canSave || saving) {
+      showToast('error', 'Please fill in Description, Amount and Date.')
+      return
+    }
 
     setSaving(true)
 
-    const { data: inserted, error } = await supabase
+    // 1) Insert expense first (so we get an id for receipt filename)
+    const { data: inserted, error: insertError } = await supabase
       .from('expenses')
       .insert({
         business_trip: businessTrip || null,
-        title: description,
+        title: description, // Description maps to title
         merchant: vendor || null,
         notes: notes || null,
         amount: Number(amount),
         currency,
         category,
         status: 'Pending',
+        reimbursable: false,
         country,
         expense_date: expenseDate,
         receipt_path: null,
@@ -146,25 +150,38 @@ export default function ExpensesPage() {
       .select('*')
       .single()
 
-    if (error || !inserted) {
-      showToast('error', 'Failed to save expense')
+    if (insertError || !inserted) {
+      showToast('error', `Could not save expense: ${insertError?.message ?? 'Unknown error'}`)
       setSaving(false)
       return
     }
 
+    // 2) Upload receipt (optional)
     if (receiptFile) {
-      const ext = receiptFile.name.split('.').pop() || 'jpg'
+      const extRaw = receiptFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const ext = extRaw.replace(/[^a-z0-9]/g, '') || 'jpg'
       const path = `${inserted.id}.${ext}`
 
       const { error: uploadError } = await supabase.storage
         .from('receipts')
-        .upload(path, receiptFile, { upsert: true })
+        .upload(path, receiptFile, {
+          upsert: true,
+          contentType: receiptFile.type || 'image/jpeg',
+        })
 
       if (!uploadError) {
-        await supabase.from('expenses').update({ receipt_path: path }).eq('id', inserted.id)
-        showToast('success', 'Expense and receipt saved ✅')
+        const { error: updateError } = await supabase
+          .from('expenses')
+          .update({ receipt_path: path })
+          .eq('id', inserted.id)
+
+        if (updateError) {
+          showToast('error', `Receipt uploaded but failed to link: ${updateError.message}`)
+        } else {
+          showToast('success', 'Expense and receipt saved ✅')
+        }
       } else {
-        showToast('error', uploadError.message)
+        showToast('error', `Receipt upload failed: ${uploadError.message}`)
       }
     } else {
       showToast('success', 'Expense saved ✅')
@@ -177,140 +194,291 @@ export default function ExpensesPage() {
   }
 
   async function deleteExpense(expense: ExpenseRow) {
-    if (expense.receipt_path) {
-      await supabase.storage.from('receipts').remove([expense.receipt_path])
+    try {
+      if (expense.receipt_path) {
+        await supabase.storage.from('receipts').remove([expense.receipt_path])
+      }
+      const { error } = await supabase.from('expenses').delete().eq('id', expense.id)
+      if (error) {
+        showToast('error', `Delete failed: ${error.message}`)
+        return
+      }
+      showToast('success', 'Expense deleted ✅')
+      fetchExpenses()
+    } catch {
+      showToast('error', 'Delete failed. Please try again.')
     }
+  }
 
-    await supabase.from('expenses').delete().eq('id', expense.id)
-    showToast('success', 'Expense deleted')
-    fetchExpenses()
+  async function openReceipt(receiptPath: string) {
+    const { data } = supabase.storage.from('receipts').getPublicUrl(receiptPath)
+    if (data?.publicUrl) window.open(data.publicUrl, '_blank')
   }
 
   async function exportZIP() {
-    const zip = new JSZip()
-    zip.file('expenses.csv', toCSV(expenses))
+    try {
+      const zip = new JSZip()
+      zip.file('expenses.csv', toCSV(expenses))
 
-    const folder = zip.folder('receipts')
-    for (const e of expenses) {
-      if (!e.receipt_path) continue
-      const { data } = await supabase.storage.from('receipts').download(e.receipt_path)
-      if (data) folder?.file(e.receipt_path, data)
+      const receiptsFolder = zip.folder('receipts')
+
+      for (const exp of expenses) {
+        if (!exp.receipt_path) continue
+        const { data, error } = await supabase.storage.from('receipts').download(exp.receipt_path)
+        if (!error && data) receiptsFolder?.file(exp.receipt_path, data)
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' })
+      downloadBlob(blob, 'expenses_export.zip')
+      showToast('success', 'Export downloaded ✅')
+    } catch {
+      showToast('error', 'Export failed. Please try again.')
     }
-
-    const blob = await zip.generateAsync({ type: 'blob' })
-    downloadBlob(blob, 'expenses_export.zip')
-    showToast('success', 'Export downloaded')
   }
 
   return (
     <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Expenses</h1>
+
         <div className="flex gap-2">
-          <button onClick={exportZIP} className="border px-3 py-2 rounded text-sm">
+          <button onClick={exportZIP} className="border px-3 py-2 rounded text-sm" type="button">
             Export
           </button>
-          <button onClick={() => setOpen(true)} className="bg-black text-white px-3 py-2 rounded text-sm">
+          <button
+            onClick={() => setOpen(true)}
+            className="bg-black text-white px-3 py-2 rounded text-sm"
+            type="button"
+          >
             + Add Expense
           </button>
         </div>
       </div>
 
+      {/* List */}
       {loading && <p>Loading…</p>}
+      {!loading && expenses.length === 0 && <p>No expenses yet.</p>}
 
       <div className="space-y-3">
-        {expenses.map(e => (
-          <div key={e.id} className="border rounded-xl p-4 bg-white">
-            <div className="flex justify-between mb-1">
-              <p className="font-medium">{formatMoney(e.amount, e.currency)}</p>
-              <span className="text-xs text-gray-400">{e.expense_date}</span>
+        {expenses.map(expense => (
+          <div key={expense.id} className="border rounded-xl p-4 bg-white">
+            <div className="flex justify-between items-start mb-1">
+              <p className="font-medium">{formatMoney(expense.amount, expense.currency)}</p>
+              <span className="text-xs text-gray-400">{expense.expense_date}</span>
             </div>
-            <p className="text-sm">{e.title}</p>
-            <div className="mt-2 flex justify-between text-xs text-gray-400">
-              <span>{e.category}</span>
-              <button onClick={() => deleteExpense(e)} className="text-red-600">
-                Delete
-              </button>
+
+            <p className="text-sm text-gray-800">{expense.title}</p>
+
+            <div className="mt-2 flex justify-between items-center text-xs text-gray-400">
+              <span>{expense.category} · {expense.country}</span>
+
+              <div className="flex items-center gap-3">
+                {expense.receipt_path && (
+                  <button
+                    onClick={() => openReceipt(expense.receipt_path!)}
+                    className="text-blue-600"
+                    type="button"
+                  >
+                    Receipt
+                  </button>
+                )}
+
+                <button onClick={() => deleteExpense(expense)} className="text-red-600" type="button">
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* MODAL */}
+      {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <div className="absolute inset-0 flex justify-center items-start p-4">
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow border max-h-[90vh] flex flex-col">
-              <div className="flex justify-between items-center px-5 py-4 border-b">
+          {/* backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => {
+              setOpen(false)
+              resetForm()
+            }}
+          />
+
+          {/* modal container */}
+          <div className="absolute inset-0 flex items-start justify-center p-4">
+            <div className="w-full max-w-lg bg-white rounded-2xl shadow border overflow-hidden max-h-[90vh] flex flex-col">
+              {/* fixed header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
                 <h2 className="text-lg font-semibold">Add New Expense</h2>
-                <button onClick={() => setOpen(false)} className="text-xl">×</button>
+                <button
+                  onClick={() => {
+                    setOpen(false)
+                    resetForm()
+                  }}
+                  className="text-xl leading-none text-gray-500"
+                  type="button"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
               </div>
 
-              <div className="overflow-y-auto p-5">
-                <form onSubmit={addExpense} className="space-y-4">
+              {/* scrollable body */}
+              <div className="overflow-y-auto overscroll-contain p-5">
+                <form id="add-expense-form" onSubmit={addExpense} className="space-y-4">
                   {/* Receipt upload */}
-<div className="space-y-2">
-  <label className="text-sm font-medium">Receipt Image</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Receipt Image</label>
 
-  <label className="block cursor-pointer">
-    <input
-      type="file"
-      accept="image/*"
-      className="hidden"
-      onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-    />
+                    <label className="block cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                      />
 
-    <div className="border-2 border-dashed rounded-xl p-6 text-center text-gray-500">
-      <div className="text-2xl mb-2">🧾</div>
-      <div className="font-medium">Click to upload receipt</div>
-      <div className="text-xs text-gray-400">PNG, JPG up to 10MB</div>
+                      <div className="border-2 border-dashed rounded-xl p-6 text-center text-gray-500">
+                        <div className="text-2xl mb-2">🧾</div>
+                        <div className="font-medium">Click to upload receipt</div>
+                        <div className="text-xs text-gray-400">PNG, JPG up to 10MB</div>
 
-      {receiptFile && (
-        <div className="mt-2 text-xs text-gray-600">
-          Selected: {receiptFile.name}
-        </div>
-      )}
-    </div>
-  </label>
-</div>
+                        {receiptFile && (
+                          <div className="mt-2 text-xs text-gray-600">
+                            Selected: {receiptFile.name}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  </div>
 
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Business Trip</label>
+                    <input
+                      className="w-full border p-3 rounded-xl"
+                      placeholder="e.g., London Conference, Client Visit"
+                      value={businessTrip}
+                      onChange={e => setBusinessTrip(e.target.value)}
+                    />
+                  </div>
 
-                  <input className="w-full border p-3 rounded-xl" placeholder="Business Trip"
-                    value={businessTrip} onChange={e => setBusinessTrip(e.target.value)} />
-
-                  <input className="w-full border p-3 rounded-xl" placeholder="Description *"
-                    value={description} onChange={e => setDescription(e.target.value)} required />
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" className="border p-3 rounded-xl" placeholder="Amount"
-                      value={amount} onChange={e => setAmount(e.target.value)} required />
-                    <select className="border p-3 rounded-xl" value={currency} onChange={e => setCurrency(e.target.value)}>
-                      <option>GBP</option><option>EUR</option><option>USD</option><option>CHF</option>
-                    </select>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Description *</label>
+                    <input
+                      className="w-full border p-3 rounded-xl"
+                      placeholder="What was this expense for?"
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      required
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <select className="border p-3 rounded-xl" value={category} onChange={e => setCategory(e.target.value as any)}>
-                      {CATEGORY_OPTIONS.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                    <input type="date" className="border p-3 rounded-xl"
-                      value={expenseDate} onChange={e => setExpenseDate(e.target.value)} required />
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Amount *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-full border p-3 rounded-xl"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={e => setAmount(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Currency</label>
+                      <select
+                        className="w-full border p-3 rounded-xl"
+                        value={currency}
+                        onChange={e => setCurrency(e.target.value)}
+                      >
+                        <option>GBP</option>
+                        <option>EUR</option>
+                        <option>USD</option>
+                        <option>CHF</option>
+                      </select>
+                    </div>
                   </div>
 
-                  <input className="w-full border p-3 rounded-xl" placeholder="Vendor / Merchant"
-                    value={vendor} onChange={e => setVendor(e.target.value)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Category *</label>
+                      <select
+                        className="w-full border p-3 rounded-xl"
+                        value={category}
+                        onChange={e => setCategory(e.target.value as any)}
+                      >
+                        {CATEGORY_OPTIONS.map(c => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <input className="w-full border p-3 rounded-xl" placeholder="Notes"
-                    value={notes} onChange={e => setNotes(e.target.value)} />
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Date *</label>
+                      <input
+                        type="date"
+                        className="w-full border p-3 rounded-xl"
+                        value={expenseDate}
+                        onChange={e => setExpenseDate(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
 
-                  <button type="submit" disabled={!canSave || saving}
-                    className="w-full bg-black text-white py-3 rounded-xl">
-                    {saving ? 'Saving…' : 'Add Expense'}
-                  </button>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Vendor / Merchant</label>
+                    <input
+                      className="w-full border p-3 rounded-xl"
+                      placeholder="e.g., Amazon, Uber, Starbucks"
+                      value={vendor}
+                      onChange={e => setVendor(e.target.value)}
+                    />
+                  </div>
 
-                  <div className="h-6" />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Notes</label>
+                    <input
+                      className="w-full border p-3 rounded-xl"
+                      placeholder="Any extra details…"
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Country</label>
+                    <input
+                      className="w-full border p-3 rounded-xl"
+                      placeholder="Country"
+                      value={country}
+                      onChange={e => setCountry(e.target.value)}
+                    />
+                  </div>
                 </form>
+
+                {/* bottom padding so fields don't hide behind sticky footer */}
+                <div className="h-24" />
+              </div>
+
+              {/* sticky footer submit */}
+              <div className="border-t p-4 shrink-0 bg-white">
+                <button
+                  form="add-expense-form"
+                  type="submit"
+                  disabled={!canSave || saving}
+                  className="w-full bg-black text-white py-3 rounded-xl disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Add Expense'}
+                </button>
+
+                {/* iPhone safe area padding */}
+                <div className="h-[env(safe-area-inset-bottom)]" />
               </div>
             </div>
           </div>
