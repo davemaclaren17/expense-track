@@ -61,10 +61,15 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  // modal
+  // Sheet open + mode
   const [open, setOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null) // null = new
+  const isEditing = editingId !== null
 
-  // form
+  // saving
+  const [saving, setSaving] = useState(false)
+
+  // form fields
   const [businessTrip, setBusinessTrip] = useState('')
   const [description, setDescription] = useState('')
   const [vendor, setVendor] = useState('')
@@ -75,7 +80,9 @@ export default function ExpensesPage() {
   const [country, setCountry] = useState('United Kingdom')
   const [expenseDate, setExpenseDate] = useState('')
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
-  const [saving, setSaving] = useState(false)
+
+  // track existing receipt for edit mode (so we can remove it)
+  const [existingReceiptPath, setExistingReceiptPath] = useState<string | null>(null)
 
   const canSave = useMemo(() => {
     return description.trim().length > 0 && amount.trim().length > 0 && expenseDate.trim().length > 0
@@ -85,13 +92,10 @@ export default function ExpensesPage() {
     fetchExpenses()
   }, [])
 
-  // Prevent background scroll on iPhone when modal open
+  // Lock background scroll on iOS when sheet open
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    if (open) document.body.style.overflow = 'hidden'
+    else document.body.style.overflow = ''
     return () => {
       document.body.style.overflow = ''
     }
@@ -119,9 +123,93 @@ export default function ExpensesPage() {
     setCountry('United Kingdom')
     setExpenseDate('')
     setReceiptFile(null)
+    setExistingReceiptPath(null)
+    setEditingId(null)
   }
 
-  async function addExpense(e: React.FormEvent) {
+  function openNew() {
+    resetForm()
+    setOpen(true)
+  }
+
+  function openEdit(exp: ExpenseRow) {
+    setEditingId(exp.id)
+    setBusinessTrip(exp.business_trip ?? '')
+    setDescription(exp.title ?? '')
+    setVendor(exp.merchant ?? '')
+    setNotes(exp.notes ?? '')
+    setAmount(String(exp.amount ?? ''))
+    setCurrency(exp.currency ?? 'GBP')
+    setCategory((exp.category as any) ?? 'Food & Drinks')
+    setCountry(exp.country ?? 'United Kingdom')
+    setExpenseDate(exp.expense_date ?? '')
+    setReceiptFile(null)
+    setExistingReceiptPath(exp.receipt_path ?? null)
+    setOpen(true)
+  }
+
+  function closeSheet() {
+    setOpen(false)
+    resetForm()
+  }
+
+  async function upsertReceipt(expenseId: string) {
+    if (!receiptFile) return null
+
+    const extRaw = receiptFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const ext = extRaw.replace(/[^a-z0-9]/g, '') || 'jpg'
+    const path = `${expenseId}.${ext}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('receipts')
+      .upload(path, receiptFile, {
+        upsert: true,
+        contentType: receiptFile.type || 'image/jpeg',
+      })
+
+    if (uploadError) {
+      showToast('error', `Receipt upload failed: ${uploadError.message}`)
+      return null
+    }
+
+    return path
+  }
+
+  async function removeReceipt() {
+    if (!isEditing || !editingId || !existingReceiptPath) return
+
+    setSaving(true)
+    try {
+      // 1) remove file
+      const { error: removeError } = await supabase.storage
+        .from('receipts')
+        .remove([existingReceiptPath])
+
+      if (removeError) {
+        showToast('error', `Could not remove receipt: ${removeError.message}`)
+        return
+      }
+
+      // 2) clear column in DB
+      const { error: updateError } = await supabase
+        .from('expenses')
+        .update({ receipt_path: null })
+        .eq('id', editingId)
+
+      if (updateError) {
+        showToast('error', `Could not update expense: ${updateError.message}`)
+        return
+      }
+
+      setExistingReceiptPath(null)
+      showToast('success', 'Receipt removed ✅')
+      fetchExpenses()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveExpense(e: React.FormEvent) {
     e.preventDefault()
     if (!canSave || saving) {
       showToast('error', 'Please fill in Description, Amount and Date.')
@@ -130,84 +218,98 @@ export default function ExpensesPage() {
 
     setSaving(true)
 
-    // 1) Insert expense first (so we get an id for receipt filename)
-    const { data: inserted, error: insertError } = await supabase
-      .from('expenses')
-      .insert({
-        business_trip: businessTrip || null,
-        title: description, // Description maps to title
-        merchant: vendor || null,
-        notes: notes || null,
-        amount: Number(amount),
-        currency,
-        category,
-        status: 'Pending',
-        reimbursable: false,
-        country,
-        expense_date: expenseDate,
-        receipt_path: null,
-      })
-      .select('*')
-      .single()
-
-    if (insertError || !inserted) {
-      showToast('error', `Could not save expense: ${insertError?.message ?? 'Unknown error'}`)
-      setSaving(false)
-      return
-    }
-
-    // 2) Upload receipt (optional)
-    if (receiptFile) {
-      const extRaw = receiptFile.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const ext = extRaw.replace(/[^a-z0-9]/g, '') || 'jpg'
-      const path = `${inserted.id}.${ext}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('receipts')
-        .upload(path, receiptFile, {
-          upsert: true,
-          contentType: receiptFile.type || 'image/jpeg',
-        })
-
-      if (!uploadError) {
-        const { error: updateError } = await supabase
+    try {
+      if (!isEditing) {
+        // INSERT new
+        const { data: inserted, error: insertError } = await supabase
           .from('expenses')
-          .update({ receipt_path: path })
-          .eq('id', inserted.id)
+          .insert({
+            business_trip: businessTrip || null,
+            title: description,
+            merchant: vendor || null,
+            notes: notes || null,
+            amount: Number(amount),
+            currency,
+            category,
+            status: 'Pending',
+            reimbursable: false,
+            country,
+            expense_date: expenseDate,
+            receipt_path: null,
+          })
+          .select('*')
+          .single()
 
-        if (updateError) {
-          showToast('error', `Receipt uploaded but failed to link: ${updateError.message}`)
-        } else {
+        if (insertError || !inserted) {
+          showToast('error', `Could not save expense: ${insertError?.message ?? 'Unknown error'}`)
+          setSaving(false)
+          return
+        }
+
+        // optional receipt
+        const receiptPath = await upsertReceipt(inserted.id)
+        if (receiptPath) {
+          await supabase.from('expenses').update({ receipt_path: receiptPath }).eq('id', inserted.id)
           showToast('success', 'Expense and receipt saved ✅')
+        } else {
+          showToast('success', 'Expense saved ✅')
         }
       } else {
-        showToast('error', `Receipt upload failed: ${uploadError.message}`)
-      }
-    } else {
-      showToast('success', 'Expense saved ✅')
-    }
+        // UPDATE existing
+        const id = editingId!
 
-    setSaving(false)
-    setOpen(false)
-    resetForm()
-    fetchExpenses()
+        const { error: updateError } = await supabase
+          .from('expenses')
+          .update({
+            business_trip: businessTrip || null,
+            title: description,
+            merchant: vendor || null,
+            notes: notes || null,
+            amount: Number(amount),
+            currency,
+            category,
+            country,
+            expense_date: expenseDate,
+          })
+          .eq('id', id)
+
+        if (updateError) {
+          showToast('error', `Update failed: ${updateError.message}`)
+          setSaving(false)
+          return
+        }
+
+        // optional receipt replacement
+        const receiptPath = await upsertReceipt(id)
+        if (receiptPath) {
+          await supabase.from('expenses').update({ receipt_path: receiptPath }).eq('id', id)
+          setExistingReceiptPath(receiptPath)
+          showToast('success', 'Expense updated + receipt replaced ✅')
+        } else {
+          showToast('success', 'Expense updated ✅')
+        }
+      }
+
+      closeSheet()
+      fetchExpenses()
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function deleteExpense(expense: ExpenseRow) {
-    try {
-      if (expense.receipt_path) {
-        await supabase.storage.from('receipts').remove([expense.receipt_path])
-      }
-      const { error } = await supabase.from('expenses').delete().eq('id', expense.id)
-      if (error) {
-        showToast('error', `Delete failed: ${error.message}`)
-        return
-      }
-      showToast('success', 'Expense deleted ✅')
-      fetchExpenses()
-    } catch {
-      showToast('error', 'Delete failed. Please try again.')
+    if (expense.receipt_path) {
+      await supabase.storage.from('receipts').remove([expense.receipt_path])
     }
+
+    const { error } = await supabase.from('expenses').delete().eq('id', expense.id)
+    if (error) {
+      showToast('error', `Delete failed: ${error.message}`)
+      return
+    }
+
+    showToast('success', 'Expense deleted ✅')
+    fetchExpenses()
   }
 
   async function openReceipt(receiptPath: string) {
@@ -221,7 +323,6 @@ export default function ExpensesPage() {
       zip.file('expenses.csv', toCSV(expenses))
 
       const receiptsFolder = zip.folder('receipts')
-
       for (const exp of expenses) {
         if (!exp.receipt_path) continue
         const { data, error } = await supabase.storage.from('receipts').download(exp.receipt_path)
@@ -237,248 +338,272 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
+    <div className="px-4 py-6 max-w-3xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-xl font-semibold">Expenses</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Expenses</h1>
+          <p className="text-sm text-gray-500">Track spending with receipts</p>
+        </div>
 
         <div className="flex gap-2">
-          <button onClick={exportZIP} className="border px-3 py-2 rounded text-sm" type="button">
+          <button
+            onClick={exportZIP}
+            className="rounded-xl border bg-white px-3 py-2 text-sm shadow-sm active:scale-[0.99]"
+            type="button"
+          >
             Export
           </button>
           <button
-            onClick={() => setOpen(true)}
-            className="bg-black text-white px-3 py-2 rounded text-sm"
+            onClick={openNew}
+            className="rounded-xl bg-black text-white px-3 py-2 text-sm shadow-sm active:scale-[0.99]"
             type="button"
           >
-            + Add Expense
+            + Add
           </button>
         </div>
       </div>
 
-      {/* List */}
-      {loading && <p>Loading…</p>}
-      {!loading && expenses.length === 0 && <p>No expenses yet.</p>}
+      {/* List container */}
+      <div className="rounded-2xl bg-gray-50 border p-3">
+        {loading && <p className="p-3 text-sm text-gray-600">Loading…</p>}
+        {!loading && expenses.length === 0 && <p className="p-3 text-sm text-gray-600">No expenses yet.</p>}
 
-      <div className="space-y-3">
-        {expenses.map(expense => (
-          <div key={expense.id} className="border rounded-xl p-4 bg-white">
-            <div className="flex justify-between items-start mb-1">
-              <p className="font-medium">{formatMoney(expense.amount, expense.currency)}</p>
-              <span className="text-xs text-gray-400">{expense.expense_date}</span>
-            </div>
+        <div className="space-y-2">
+          {expenses.map(exp => (
+            <div key={exp.id} className="bg-white rounded-2xl border shadow-sm p-4">
+              <div className="flex justify-between items-start">
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-500">{exp.category}</p>
+                  <p className="font-medium text-gray-900 truncate">{exp.title}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {exp.merchant ? `${exp.merchant} · ` : ''}
+                    {exp.expense_date}
+                  </p>
+                </div>
 
-            <p className="text-sm text-gray-800">{expense.title}</p>
+                <div className="text-right">
+                  <p className="font-semibold">{formatMoney(exp.amount, exp.currency)}</p>
+                  <p className="text-xs text-gray-500">{exp.country}</p>
+                </div>
+              </div>
 
-            <div className="mt-2 flex justify-between items-center text-xs text-gray-400">
-              <span>{expense.category} · {expense.country}</span>
-
-              <div className="flex items-center gap-3">
-                {expense.receipt_path && (
-                  <button
-                    onClick={() => openReceipt(expense.receipt_path!)}
-                    className="text-blue-600"
-                    type="button"
-                  >
-                    Receipt
+              <div className="mt-3 flex items-center justify-between text-sm">
+                <div className="flex gap-3">
+                  <button onClick={() => openEdit(exp)} className="text-blue-600 active:opacity-70" type="button">
+                    Edit
                   </button>
-                )}
 
-                <button onClick={() => deleteExpense(expense)} className="text-red-600" type="button">
+                  {exp.receipt_path && (
+                    <button
+                      onClick={() => openReceipt(exp.receipt_path!)}
+                      className="text-blue-600 active:opacity-70"
+                      type="button"
+                    >
+                      Receipt
+                    </button>
+                  )}
+                </div>
+
+                <button onClick={() => deleteExpense(exp)} className="text-red-600 active:opacity-70" type="button">
                   Delete
                 </button>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      {/* Modal */}
+      {/* Bottom sheet */}
       {open && (
         <div className="fixed inset-0 z-50">
-          {/* backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => {
-              setOpen(false)
-              resetForm()
-            }}
-          />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={closeSheet} />
 
-          {/* modal container */}
-          <div className="absolute inset-0 flex items-start justify-center p-4">
-            <div className="w-full max-w-lg bg-white rounded-2xl shadow border overflow-hidden max-h-[90vh] flex flex-col">
-              {/* fixed header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
-                <h2 className="text-lg font-semibold">Add New Expense</h2>
-                <button
-                  onClick={() => {
-                    setOpen(false)
-                    resetForm()
-                  }}
-                  className="text-xl leading-none text-gray-500"
-                  type="button"
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
+          <div className="absolute inset-x-0 bottom-0">
+            <div className="mx-auto max-w-lg">
+              <div className="rounded-t-3xl bg-white border shadow-2xl max-h-[88vh] flex flex-col">
+                <div className="pt-3 flex justify-center">
+                  <div className="h-1.5 w-12 rounded-full bg-gray-300" />
+                </div>
 
-              {/* scrollable body */}
-              <div className="overflow-y-auto overscroll-contain p-5">
-                <form id="add-expense-form" onSubmit={addExpense} className="space-y-4">
-                  {/* Receipt upload */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Receipt Image</label>
+                <div className="px-5 pt-3 pb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">{isEditing ? 'Edit Expense' : 'Add New Expense'}</h2>
+                  <button onClick={closeSheet} className="text-xl text-gray-500" type="button" aria-label="Close">
+                    ×
+                  </button>
+                </div>
 
-                    <label className="block cursor-pointer">
+                <div className="overflow-y-auto overscroll-contain px-5 pb-5">
+                  <form id="expense-form" onSubmit={saveExpense} className="space-y-4">
+                    {/* Receipt */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Receipt Image</label>
+
+                      <label className="block cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                        />
+
+                        <div className="border-2 border-dashed rounded-2xl p-6 text-center text-gray-500 bg-gray-50">
+                          <div className="text-2xl mb-2">🧾</div>
+                          <div className="font-medium">Tap to upload receipt</div>
+                          <div className="text-xs text-gray-400">PNG, JPG up to 10MB</div>
+
+                          {receiptFile && (
+                            <div className="mt-2 text-xs text-gray-700">
+                              Selected: {receiptFile.name}
+                            </div>
+                          )}
+
+                          {isEditing && !receiptFile && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              (Optional) Upload to replace the existing receipt
+                            </div>
+                          )}
+                        </div>
+                      </label>
+
+                      {/* ✅ Remove receipt button */}
+                      {isEditing && existingReceiptPath && (
+                        <button
+                          type="button"
+                          onClick={removeReceipt}
+                          disabled={saving}
+                          className="w-full rounded-2xl border border-red-200 bg-red-50 text-red-700 py-3 text-[16px] font-medium disabled:opacity-50 active:scale-[0.99]"
+                        >
+                          Remove receipt
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Form fields */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Business Trip</label>
                       <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder="e.g., London Conference, Client Visit"
+                        value={businessTrip}
+                        onChange={e => setBusinessTrip(e.target.value)}
                       />
+                    </div>
 
-                      <div className="border-2 border-dashed rounded-xl p-6 text-center text-gray-500">
-                        <div className="text-2xl mb-2">🧾</div>
-                        <div className="font-medium">Click to upload receipt</div>
-                        <div className="text-xs text-gray-400">PNG, JPG up to 10MB</div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Description *</label>
+                      <input
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder="What was this expense for?"
+                        value={description}
+                        onChange={e => setDescription(e.target.value)}
+                        required
+                      />
+                    </div>
 
-                        {receiptFile && (
-                          <div className="mt-2 text-xs text-gray-600">
-                            Selected: {receiptFile.name}
-                          </div>
-                        )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Amount *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                          placeholder="0.00"
+                          value={amount}
+                          onChange={e => setAmount(e.target.value)}
+                          required
+                        />
                       </div>
-                    </label>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Business Trip</label>
-                    <input
-                      className="w-full border p-3 rounded-xl"
-                      placeholder="e.g., London Conference, Client Visit"
-                      value={businessTrip}
-                      onChange={e => setBusinessTrip(e.target.value)}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Currency</label>
+                        <select
+                          className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                          value={currency}
+                          onChange={e => setCurrency(e.target.value)}
+                        >
+                          <option>GBP</option>
+                          <option>EUR</option>
+                          <option>USD</option>
+                          <option>CHF</option>
+                        </select>
+                      </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Description *</label>
-                    <input
-                      className="w-full border p-3 rounded-xl"
-                      placeholder="What was this expense for?"
-                      value={description}
-                      onChange={e => setDescription(e.target.value)}
-                      required
-                    />
-                  </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Category *</label>
+                        <select
+                          className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                          value={category}
+                          onChange={e => setCategory(e.target.value as any)}
+                        >
+                          {CATEGORY_OPTIONS.map(c => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">Date *</label>
+                        <input
+                          type="date"
+                          className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                          value={expenseDate}
+                          onChange={e => setExpenseDate(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Amount *</label>
+                      <label className="text-sm font-medium text-gray-700">Vendor / Merchant</label>
                       <input
-                        type="number"
-                        step="0.01"
-                        className="w-full border p-3 rounded-xl"
-                        placeholder="0.00"
-                        value={amount}
-                        onChange={e => setAmount(e.target.value)}
-                        required
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder="e.g., Amazon, Uber, Starbucks"
+                        value={vendor}
+                        onChange={e => setVendor(e.target.value)}
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Currency</label>
-                      <select
-                        className="w-full border p-3 rounded-xl"
-                        value={currency}
-                        onChange={e => setCurrency(e.target.value)}
-                      >
-                        <option>GBP</option>
-                        <option>EUR</option>
-                        <option>USD</option>
-                        <option>CHF</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Category *</label>
-                      <select
-                        className="w-full border p-3 rounded-xl"
-                        value={category}
-                        onChange={e => setCategory(e.target.value as any)}
-                      >
-                        {CATEGORY_OPTIONS.map(c => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Date *</label>
+                      <label className="text-sm font-medium text-gray-700">Notes</label>
                       <input
-                        type="date"
-                        className="w-full border p-3 rounded-xl"
-                        value={expenseDate}
-                        onChange={e => setExpenseDate(e.target.value)}
-                        required
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder="Any extra details…"
+                        value={notes}
+                        onChange={e => setNotes(e.target.value)}
                       />
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Vendor / Merchant</label>
-                    <input
-                      className="w-full border p-3 rounded-xl"
-                      placeholder="e.g., Amazon, Uber, Starbucks"
-                      value={vendor}
-                      onChange={e => setVendor(e.target.value)}
-                    />
-                  </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Country</label>
+                      <input
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder="Country"
+                        value={country}
+                        onChange={e => setCountry(e.target.value)}
+                      />
+                    </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Notes</label>
-                    <input
-                      className="w-full border p-3 rounded-xl"
-                      placeholder="Any extra details…"
-                      value={notes}
-                      onChange={e => setNotes(e.target.value)}
-                    />
-                  </div>
+                    <div className="h-24" />
+                  </form>
+                </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Country</label>
-                    <input
-                      className="w-full border p-3 rounded-xl"
-                      placeholder="Country"
-                      value={country}
-                      onChange={e => setCountry(e.target.value)}
-                    />
-                  </div>
-                </form>
+                <div className="border-t bg-white p-4">
+                  <button
+                    form="expense-form"
+                    type="submit"
+                    disabled={!canSave || saving}
+                    className="w-full rounded-2xl bg-black text-white py-3 text-[16px] font-medium disabled:opacity-50 active:scale-[0.99]"
+                  >
+                    {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Add Expense'}
+                  </button>
 
-                {/* bottom padding so fields don't hide behind sticky footer */}
-                <div className="h-24" />
-              </div>
-
-              {/* sticky footer submit */}
-              <div className="border-t p-4 shrink-0 bg-white">
-                <button
-                  form="add-expense-form"
-                  type="submit"
-                  disabled={!canSave || saving}
-                  className="w-full bg-black text-white py-3 rounded-xl disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : 'Add Expense'}
-                </button>
-
-                {/* iPhone safe area padding */}
-                <div className="h-[env(safe-area-inset-bottom)]" />
+                  <div className="h-[env(safe-area-inset-bottom)]" />
+                </div>
               </div>
             </div>
           </div>

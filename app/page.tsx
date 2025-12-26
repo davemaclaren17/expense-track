@@ -60,7 +60,7 @@ export default function DashboardPage() {
   <div className="px-4 py-6 max-w-4xl mx-auto space-y-6">
     {/* Header */}
     <div className="flex items-center justify-between">
-      <h1 className="text-xl font-semibold">Dashboard</h1>
+      <h1 className="text-xl font-semibold">Expense Dashboard</h1>
 
       <Link
         href="/expenses"
