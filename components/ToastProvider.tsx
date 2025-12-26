@@ -39,10 +39,10 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
       {toast && (
         <div className="fixed left-0 right-0 bottom-4 z-50 px-4">
           <div
-            className={`mx-auto max-w-md rounded-xl border px-4 py-3 text-sm shadow ${
-              toast.type === 'success'
-                ? 'bg-green-50 border-green-200 text-green-800'
-                : 'bg-red-50 border-red-200 text-red-800'
+            className={`mx-auto max-w-md rounded-2xl border px-4 py-3 text-sm shadow backdrop-blur bg-white/90 ${
+            toast.type === 'success'
+            ? 'border-green-200 text-green-800'
+            : 'border-red-200 text-red-800'
             }`}
           >
             {toast.message}
