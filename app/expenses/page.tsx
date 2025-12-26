@@ -12,6 +12,7 @@ type ExpenseRow = Expense & {
   business_trip: string | null
 }
 
+
 const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks'] as const
 
 function downloadBlob(blob: Blob, filename: string) {
