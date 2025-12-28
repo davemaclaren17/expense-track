@@ -1,12 +1,14 @@
 export type Expense = {
   id: string
-  title: string                 // we will use this as Description
-  merchant: string | null       // Vendor / Merchant
+  title: string
+  merchant: string | null
   amount: number
   currency: string
   category: string
-  status: 'Pending' | 'Reimbursed'
+
+  status: 'Pending' | 'Reimbursed' // (your existing field; we’ll leave it alone)
   reimbursable: boolean
+
   country: string
   notes: string | null
   expense_date: string
@@ -14,4 +16,6 @@ export type Expense = {
 
   business_trip?: string | null
   receipt_path?: string | null
+
+  receipt_status?: 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed'
 }

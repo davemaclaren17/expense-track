@@ -7,13 +7,16 @@ import { Expense } from '@/types/expense'
 import { formatMoney } from '@/lib/currency'
 import { useToast } from '@/components/ToastProvider'
 
+type ReceiptStatus = 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed'
+
 type ExpenseRow = Expense & {
   receipt_path: string | null
   business_trip: string | null
+  receipt_status: ReceiptStatus
 }
 
-
-const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks'] as const
+const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Trainfare','Taxi','Metro',] as const
+const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejected', 'Reimbursed']
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -33,7 +36,7 @@ function toCSV(expenses: ExpenseRow[]) {
     'Amount',
     'Currency',
     'Category',
-    'Status',
+    'ReceiptStatus',
     'Country',
     'Date',
     'ReceiptPath',
@@ -47,13 +50,28 @@ function toCSV(expenses: ExpenseRow[]) {
     e.amount,
     e.currency,
     e.category,
-    e.status,
+    e.receipt_status,
     e.country,
     e.expense_date,
     e.receipt_path ?? '',
   ])
 
   return [headers, ...rows].map(r => r.join(',')).join('\n')
+}
+
+function statusPillClass(status: ReceiptStatus) {
+  switch (status) {
+    case 'Pending':
+      return 'bg-gray-100 text-gray-700 border-gray-200'
+    case 'Approved':
+      return 'bg-blue-50 text-blue-700 border-blue-200'
+    case 'Rejected':
+      return 'bg-red-50 text-red-700 border-red-200'
+    case 'Reimbursed':
+      return 'bg-green-50 text-green-700 border-green-200'
+    default:
+      return 'bg-gray-100 text-gray-700 border-gray-200'
+  }
 }
 
 export default function ExpensesPage() {
@@ -64,10 +82,9 @@ export default function ExpensesPage() {
 
   // Sheet open + mode
   const [open, setOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null) // null = new
+  const [editingId, setEditingId] = useState<string | null>(null)
   const isEditing = editingId !== null
 
-  // saving
   const [saving, setSaving] = useState(false)
 
   // form fields
@@ -82,7 +99,10 @@ export default function ExpensesPage() {
   const [expenseDate, setExpenseDate] = useState('')
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
 
-  // track existing receipt for edit mode (so we can remove it)
+  // NEW: receipt status
+  const [receiptStatus, setReceiptStatus] = useState<ReceiptStatus>('Pending')
+
+  // existing receipt for edit mode
   const [existingReceiptPath, setExistingReceiptPath] = useState<string | null>(null)
 
   const canSave = useMemo(() => {
@@ -93,7 +113,6 @@ export default function ExpensesPage() {
     fetchExpenses()
   }, [])
 
-  // Lock background scroll on iOS when sheet open
   useEffect(() => {
     if (open) document.body.style.overflow = 'hidden'
     else document.body.style.overflow = ''
@@ -124,6 +143,7 @@ export default function ExpensesPage() {
     setCountry('United Kingdom')
     setExpenseDate('')
     setReceiptFile(null)
+    setReceiptStatus('Pending')
     setExistingReceiptPath(null)
     setEditingId(null)
   }
@@ -144,6 +164,7 @@ export default function ExpensesPage() {
     setCategory((exp.category as any) ?? 'Food & Drinks')
     setCountry(exp.country ?? 'United Kingdom')
     setExpenseDate(exp.expense_date ?? '')
+    setReceiptStatus(exp.receipt_status ?? 'Pending')
     setReceiptFile(null)
     setExistingReceiptPath(exp.receipt_path ?? null)
     setOpen(true)
@@ -178,20 +199,14 @@ export default function ExpensesPage() {
 
   async function removeReceipt() {
     if (!isEditing || !editingId || !existingReceiptPath) return
-
     setSaving(true)
     try {
-      // 1) remove file
-      const { error: removeError } = await supabase.storage
-        .from('receipts')
-        .remove([existingReceiptPath])
-
+      const { error: removeError } = await supabase.storage.from('receipts').remove([existingReceiptPath])
       if (removeError) {
         showToast('error', `Could not remove receipt: ${removeError.message}`)
         return
       }
 
-      // 2) clear column in DB
       const { error: updateError } = await supabase
         .from('expenses')
         .update({ receipt_path: null })
@@ -221,7 +236,7 @@ export default function ExpensesPage() {
 
     try {
       if (!isEditing) {
-        // INSERT new
+        // INSERT
         const { data: inserted, error: insertError } = await supabase
           .from('expenses')
           .insert({
@@ -232,6 +247,7 @@ export default function ExpensesPage() {
             amount: Number(amount),
             currency,
             category,
+            receipt_status: receiptStatus, // NEW
             status: 'Pending',
             reimbursable: false,
             country,
@@ -243,11 +259,9 @@ export default function ExpensesPage() {
 
         if (insertError || !inserted) {
           showToast('error', `Could not save expense: ${insertError?.message ?? 'Unknown error'}`)
-          setSaving(false)
           return
         }
 
-        // optional receipt
         const receiptPath = await upsertReceipt(inserted.id)
         if (receiptPath) {
           await supabase.from('expenses').update({ receipt_path: receiptPath }).eq('id', inserted.id)
@@ -256,7 +270,7 @@ export default function ExpensesPage() {
           showToast('success', 'Expense saved ✅')
         }
       } else {
-        // UPDATE existing
+        // UPDATE
         const id = editingId!
 
         const { error: updateError } = await supabase
@@ -269,6 +283,7 @@ export default function ExpensesPage() {
             amount: Number(amount),
             currency,
             category,
+            receipt_status: receiptStatus, // NEW
             country,
             expense_date: expenseDate,
           })
@@ -276,11 +291,9 @@ export default function ExpensesPage() {
 
         if (updateError) {
           showToast('error', `Update failed: ${updateError.message}`)
-          setSaving(false)
           return
         }
 
-        // optional receipt replacement
         const receiptPath = await upsertReceipt(id)
         if (receiptPath) {
           await supabase.from('expenses').update({ receipt_path: receiptPath }).eq('id', id)
@@ -340,7 +353,6 @@ export default function ExpensesPage() {
 
   return (
     <div className="px-4 py-6 max-w-3xl mx-auto space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Expenses</h1>
@@ -365,7 +377,6 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* List container */}
       <div className="rounded-2xl bg-gray-50 border p-3">
         {loading && <p className="p-3 text-sm text-gray-600">Loading…</p>}
         {!loading && expenses.length === 0 && <p className="p-3 text-sm text-gray-600">No expenses yet.</p>}
@@ -373,17 +384,24 @@ export default function ExpensesPage() {
         <div className="space-y-2">
           {expenses.map(exp => (
             <div key={exp.id} className="bg-white rounded-2xl border shadow-sm p-4">
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm text-gray-500">{exp.category}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-gray-500">{exp.category}</p>
+                    <span className={`text-xs border px-2 py-0.5 rounded-full ${statusPillClass(exp.receipt_status)}`}>
+                      {exp.receipt_status}
+                    </span>
+                  </div>
+
                   <p className="font-medium text-gray-900 truncate">{exp.title}</p>
+
                   <p className="text-xs text-gray-500 mt-1">
                     {exp.merchant ? `${exp.merchant} · ` : ''}
                     {exp.expense_date}
                   </p>
                 </div>
 
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <p className="font-semibold">{formatMoney(exp.amount, exp.currency)}</p>
                   <p className="text-xs text-gray-500">{exp.country}</p>
                 </div>
@@ -467,7 +485,6 @@ export default function ExpensesPage() {
                         </div>
                       </label>
 
-                      {/* ✅ Remove receipt button */}
                       {isEditing && existingReceiptPath && (
                         <button
                           type="button"
@@ -480,7 +497,22 @@ export default function ExpensesPage() {
                       )}
                     </div>
 
-                    {/* Form fields */}
+                    {/* NEW: Receipt status */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">Receipt Status</label>
+                      <select
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        value={receiptStatus}
+                        onChange={e => setReceiptStatus(e.target.value as ReceiptStatus)}
+                      >
+                        {RECEIPT_STATUS_OPTIONS.map(s => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-gray-700">Business Trip</label>
                       <input
@@ -597,7 +629,7 @@ export default function ExpensesPage() {
                   <button
                     form="expense-form"
                     type="submit"
-                    disabled={!canSave || saving}
+                    disabled={!canSave}
                     className="w-full rounded-2xl bg-black text-white py-3 text-[16px] font-medium disabled:opacity-50 active:scale-[0.99]"
                   >
                     {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Add Expense'}
