@@ -1,17 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+export const dynamic = 'force-dynamic'
+
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ToastProvider'
+
+function getNextFromUrl(defaultPath: string) {
+  if (typeof window === 'undefined') return defaultPath
+  const params = new URLSearchParams(window.location.search)
+  return params.get('next') || defaultPath
+}
 
 export default function LoginPage() {
   const supabase = createSupabaseBrowserClient()
   const { showToast } = useToast()
   const router = useRouter()
-  const search = useSearchParams()
 
-  const next = search.get('next') || '/dashboard'
+  const nextPath = useMemo(() => getNextFromUrl('/dashboard'), [])
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,11 +26,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // If already logged in, go to dashboard
+    // If already logged in, go straight to dashboard (or next)
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace(next)
+      if (data.session) {
+        router.replace(nextPath)
+        router.refresh()
+      }
     })
-  }, [router, next, supabase])
+  }, [router, nextPath, supabase])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -33,13 +43,14 @@ export default function LoginPage() {
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
-        showToast('success', 'Account created ✅ You can now sign in.')
+        showToast('success', 'Account created ✅ Now sign in.')
         setMode('signin')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         showToast('success', 'Signed in ✅')
-        router.replace(next)
+        router.replace(nextPath)
+        router.refresh()
       }
     } catch (err: any) {
       showToast('error', err?.message ?? 'Login failed')
@@ -56,7 +67,9 @@ export default function LoginPage() {
             {mode === 'signin' ? 'Sign in' : 'Create account'}
           </h1>
           <p className="text-sm text-gray-500">
-            {mode === 'signin' ? 'Access your expenses securely.' : 'Create an account to start tracking expenses.'}
+            {mode === 'signin'
+              ? 'Access your expenses securely.'
+              : 'Create an account to start tracking expenses.'}
           </p>
         </div>
 
