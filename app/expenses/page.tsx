@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseBrowserClient } from '@/lib/supabase/client'
 import { Expense } from '@/types/expense'
 import { formatMoney } from '@/lib/currency'
 import { useToast } from '@/components/ToastProvider'
+
+
 
 type ReceiptStatus = 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed'
 type FilterValue = 'All' | ReceiptStatus
@@ -19,6 +21,8 @@ type ExpenseRow = Expense & {
 const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks'] as const
 const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejected', 'Reimbursed']
 const FILTER_OPTIONS: FilterValue[] = ['All', ...RECEIPT_STATUS_OPTIONS]
+const supabase = createSupabaseBrowserClient()
+
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
