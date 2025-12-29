@@ -367,7 +367,7 @@ export default function ExpensesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Expenses</h1>
+          <h1 className="text-xl font-semibold tracking-tight">All Expenses</h1>
           <p className="text-sm text-gray-500">Track spending with receipts</p>
         </div>
 
