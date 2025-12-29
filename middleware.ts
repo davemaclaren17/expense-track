@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const response = NextResponse.next()
 
   const supabase = createServerClient(
@@ -26,10 +26,10 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname
 
-  // Public route
+  // Public routes
   if (path.startsWith('/login')) return response
 
-  // Protected routes
+  // Protect app pages
   const protectedRoutes = ['/dashboard', '/expenses']
   const isProtected = protectedRoutes.some(p => path.startsWith(p))
 
