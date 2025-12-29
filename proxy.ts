@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const response = NextResponse.next()
 
   const supabase = createServerClient(
@@ -26,10 +26,10 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname
 
-  // Public routes
+  // Public route
   if (path.startsWith('/login')) return response
 
-  // Protect these routes (add more if needed)
+  // Protected routes
   const protectedRoutes = ['/dashboard', '/expenses']
   const isProtected = protectedRoutes.some(p => path.startsWith(p))
 
@@ -37,13 +37,6 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', path)
-    return NextResponse.redirect(url)
-  }
-
-  // If user is logged in and visits /login, send them to dashboard
-  if (path.startsWith('/login') && user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
