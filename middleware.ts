@@ -30,7 +30,7 @@ export async function middleware(request: NextRequest) {
   if (path.startsWith('/login')) return response
 
   // Protect these routes (add more if needed)
-  const protectedRoutes = ['/expenses', '/dashboard']
+  const protectedRoutes = ['/dashboard', '/expenses']
   const isProtected = protectedRoutes.some(p => path.startsWith(p))
 
   if (isProtected && !user) {
