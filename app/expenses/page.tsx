@@ -18,7 +18,7 @@ type ExpenseRow = Expense & {
   receipt_status: ReceiptStatus
 }
 
-const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks'] as const
+const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Taxi fare','Railfare','Metro'] as const
 const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejected', 'Reimbursed']
 const FILTER_OPTIONS: FilterValue[] = ['All', ...RECEIPT_STATUS_OPTIONS]
 const supabase = createSupabaseBrowserClient()
@@ -547,6 +547,7 @@ export default function ExpensesPage() {
                       <input
                         className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
                         value={businessTrip}
+                        placeholder='e.g London Conference, Client Visit'
                         onChange={e => setBusinessTrip(e.target.value)}
                       />
                     </div>
@@ -556,6 +557,7 @@ export default function ExpensesPage() {
                       <input
                         className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
                         value={description}
+                        placeholder='What was the expenses for?'
                         onChange={e => setDescription(e.target.value)}
                         required
                       />
@@ -566,6 +568,7 @@ export default function ExpensesPage() {
                         type="number"
                         step="0.01"
                         className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder='0.00'
                         value={amount}
                         onChange={e => setAmount(e.target.value)}
                         required
@@ -583,20 +586,24 @@ export default function ExpensesPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
+                      
                       <select
                         className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
                         value={category}
+                        
                         onChange={e => setCategory(e.target.value as any)}
                       >
                         {CATEGORY_OPTIONS.map(c => (
                           <option key={c} value={c}>
                             {c}
                           </option>
+                          
                         ))}
                       </select>
                       <input
                         type="date"
                         className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        placeholder="Date"
                         value={expenseDate}
                         onChange={e => setExpenseDate(e.target.value)}
                         required
