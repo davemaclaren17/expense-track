@@ -18,7 +18,7 @@ type ExpenseRow = Expense & {
   receipt_status: ReceiptStatus
 }
 
-const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Taxi fare','Railfare','Metro'] as const
+const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Taxi fare','Railfare','Metro','Flights'] as const
 const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejected', 'Reimbursed']
 const FILTER_OPTIONS: FilterValue[] = ['All', ...RECEIPT_STATUS_OPTIONS]
 const supabase = createSupabaseBrowserClient()
