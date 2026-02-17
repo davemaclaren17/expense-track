@@ -497,7 +497,8 @@ export default function ExpensesPage() {
                       <label className="block cursor-pointer">
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/*,application/pdf"
+
                           className="hidden"
                           onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
                         />
@@ -505,7 +506,7 @@ export default function ExpensesPage() {
                         <div className="border-2 border-dashed rounded-2xl p-6 text-center text-gray-500 bg-gray-50">
                           <div className="text-2xl mb-2">🧾</div>
                           <div className="font-medium">Tap to upload receipt</div>
-                          <div className="text-xs text-gray-400">PNG, JPG up to 10MB</div>
+                          <div className="text-xs text-gray-400">PNG, JPG, PDF up to 10MB</div>
 
                           {receiptFile && (
                             <div className="mt-2 text-xs text-gray-700">Selected: {receiptFile.name}</div>
