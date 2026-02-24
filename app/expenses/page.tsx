@@ -564,11 +564,13 @@ export default function ExpensesPage() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
                       <input
                         type="number"
                         step="0.01"
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px] border: 2px
+                        "
                         placeholder='0.00'
                         value={amount}
                         onChange={e => setAmount(e.target.value)}
@@ -586,7 +588,7 @@ export default function ExpensesPage() {
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border: 2px">
                       
                       <select
                         className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
@@ -603,7 +605,7 @@ export default function ExpensesPage() {
                       </select>
                       <input
                         type="date"
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px] border: 2px"
                         placeholder="Date"
                         value={expenseDate}
                         onChange={e => setExpenseDate(e.target.value)}
