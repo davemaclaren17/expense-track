@@ -18,7 +18,7 @@ type ExpenseRow = Expense & {
   receipt_status: ReceiptStatus
 }
 
-const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Taxi fare','Railfare','Metro','Flights'] as const
+const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Taxi fare','Railfare','Metro','Flights','Hire Car','Fuel Receipts'] as const
 const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejected', 'Reimbursed']
 const FILTER_OPTIONS: FilterValue[] = ['All', ...RECEIPT_STATUS_OPTIONS]
 const supabase = createSupabaseBrowserClient()
@@ -605,7 +605,7 @@ export default function ExpensesPage() {
                       </select>
                       <input
                         type="date"
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px] border: 2px"
+                        className="w-full rounded-2xl border bg-white px-4 appearance-none h-12 text-[16px] leading-tight"
                         placeholder="Date"
                         value={expenseDate}
                         onChange={e => setExpenseDate(e.target.value)}
