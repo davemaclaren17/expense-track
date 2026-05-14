@@ -42,18 +42,21 @@ export default function TopMenu() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-white">
+    <header className="sticky top-0 z-40 border-b border-[#dbe3ef] bg-white/95 backdrop-blur">
       <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-        <div className="font-semibold text-lg tracking-tight">
-          Expense Tracker
+        <div className="flex items-center gap-2 font-semibold text-lg tracking-tight text-[#172554]">
+          <span className="grid h-8 w-8 place-items-center rounded-md bg-[#172554] text-sm text-white shadow-sm">
+            £
+          </span>
+          <span>Expense Tracker</span>
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm text-[#344054]">
           {!user && (
             <Link
               href="/login"
-              className="rounded-xl border px-3 py-2"
+              className="btn-secondary px-3 py-2"
             >
               Login
             </Link>
@@ -63,21 +66,21 @@ export default function TopMenu() {
             <>
               <Link
                 href="/dashboard"
-                className={pathname === '/dashboard' ? 'font-medium' : ''}
+                className={pathname === '/dashboard' ? 'font-semibold nav-link-active' : 'hover:text-[#172554]'}
               >
                 Dashboard
               </Link>
 
               <Link
                 href="/expenses"
-                className={pathname === '/expenses' ? 'font-medium' : ''}
+                className={pathname === '/expenses' ? 'font-semibold nav-link-active' : 'hover:text-[#172554]'}
               >
                 Expenses
               </Link>
 
               <button
                 onClick={signOut}
-                className="rounded-xl border px-3 py-2"
+                className="btn-secondary px-3 py-2"
                 type="button"
               >
                 Sign out

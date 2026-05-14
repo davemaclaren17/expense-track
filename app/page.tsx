@@ -16,22 +16,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchExpenses()
-  }, [])
-
-  async function fetchExpenses() {
-    setLoading(true)
-
-    const { data } = await supabase
+    supabase
       .from('expenses')
       .select('*')
+      .then(({ data }) => {
+        if (data) {
+          setExpenses(data)
+        }
 
-    if (data) {
-      setExpenses(data)
-    }
-
-    setLoading(false)
-  }
+        setLoading(false)
+      })
+  }, [])
 
   function totalsByCurrency(filter?: (e: Expense) => boolean): Totals {
     return expenses
@@ -57,20 +52,20 @@ export default function DashboardPage() {
   )
 
   return (
-  <div className="px-4 py-6 max-w-4xl mx-auto space-y-6">
+  <div className="app-page space-y-6">
     {/* Header */}
     <div className="flex items-center justify-between">
-      <h1 className="text-xl font-semibold">Expense Dashboard</h1>
+      <h1 className="section-title">Expense Dashboard</h1>
 
       <Link
         href="/expenses"
-        className="bg-black text-white px-4 py-2 rounded text-sm"
+        className="btn-accent"
       >
         + Add Expense
       </Link>
     </div>
 
-    {loading && <p>Loading…</p>}
+    {loading && <p className="text-sm text-[#667085]">Loading…</p>}
 
     {!loading && (
       <div className="space-y-6">
@@ -126,14 +121,14 @@ function StatCard({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        highlight ? 'bg-gray-50 border-gray-300' : 'bg-white'
+      className={`app-card p-4 ${
+        highlight ? 'bg-[#fff7f5]' : 'bg-white'
       }`}
     >
       <div className="mb-2">
-        <p className="text-sm text-gray-500">{title}</p>
+        <p className="text-sm text-[#667085]">{title}</p>
         {subtitle && (
-          <p className="text-xs text-gray-400">{subtitle}</p>
+          <p className="text-xs text-[#98a2b3]">{subtitle}</p>
         )}
       </div>
 
@@ -141,16 +136,15 @@ function StatCard({
         Object.entries(totals).map(([currency, amount]) => (
           <p
             key={currency}
-            className="text-xl font-semibold leading-tight"
+            className="text-xl font-semibold leading-tight text-[#172554]"
           >
             {formatMoney(amount, currency)}
           </p>
         ))}
 
       {value !== undefined && (
-        <p className="text-xl font-semibold">{value}</p>
+        <p className="text-xl font-semibold text-[#172554]">{value}</p>
       )}
     </div>
   )
 }
-

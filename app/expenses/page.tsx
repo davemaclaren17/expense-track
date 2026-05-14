@@ -23,6 +23,9 @@ const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejecte
 const FILTER_OPTIONS: FilterValue[] = ['All', ...RECEIPT_STATUS_OPTIONS]
 const supabase = createSupabaseBrowserClient()
 
+function isCategoryOption(value: string): value is (typeof CATEGORY_OPTIONS)[number] {
+  return CATEGORY_OPTIONS.includes(value as (typeof CATEGORY_OPTIONS)[number])
+}
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -68,13 +71,13 @@ function toCSV(expenses: ExpenseRow[]) {
 function statusPillClass(status: ReceiptStatus) {
   switch (status) {
     case 'Pending':
-      return 'bg-gray-100 text-gray-700 border-gray-200'
+      return 'bg-amber-50 text-amber-700 border-amber-200'
     case 'Approved':
-      return 'bg-blue-50 text-blue-700 border-blue-200'
+      return 'bg-sky-50 text-sky-700 border-sky-200'
     case 'Rejected':
       return 'bg-red-50 text-red-700 border-red-200'
     case 'Reimbursed':
-      return 'bg-green-50 text-green-700 border-green-200'
+      return 'bg-teal-50 text-teal-700 border-teal-200'
     default:
       return 'bg-gray-100 text-gray-700 border-gray-200'
   }
@@ -173,7 +176,7 @@ export default function ExpensesPage() {
     setNotes(exp.notes ?? '')
     setAmount(String(exp.amount ?? ''))
     setCurrency(exp.currency ?? 'GBP')
-    setCategory((exp.category as any) ?? 'Food & Drinks')
+    setCategory(isCategoryOption(exp.category) ? exp.category : 'Food & Drinks')
     setCountry(exp.country ?? 'United Kingdom')
     setExpenseDate(exp.expense_date ?? '')
     setReceiptStatus(exp.receipt_status ?? 'Pending')
@@ -363,25 +366,26 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div className="px-4 py-6 max-w-3xl mx-auto space-y-4">
+    <div className="app-page space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">All Expenses</h1>
-          <p className="text-sm text-gray-500">Track spending with receipts</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f97363]">Receipts and claims</p>
+          <h1 className="section-title">All Expenses</h1>
+          <p className="section-subtitle">Track spending with receipts</p>
         </div>
 
         <div className="flex gap-2">
           <button
             onClick={exportZIP}
-            className="rounded-xl border bg-white px-3 py-2 text-sm shadow-sm active:scale-[0.99]"
+            className="btn-secondary px-3 py-2"
             type="button"
           >
             Export
           </button>
           <button
             onClick={openNew}
-            className="rounded-xl bg-black text-white px-3 py-2 text-sm shadow-sm active:scale-[0.99]"
+            className="btn-accent px-3 py-2"
             type="button"
           >
             + Add
@@ -390,7 +394,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* NEW: Filter bar */}
-      <div className="rounded-2xl border bg-white p-2 shadow-sm">
+      <div className="app-card p-2">
         <div className="flex gap-2 overflow-x-auto">
           {FILTER_OPTIONS.map(opt => {
             const active = filter === opt
@@ -399,8 +403,8 @@ export default function ExpensesPage() {
                 key={opt}
                 onClick={() => setFilter(opt)}
                 type="button"
-                className={`shrink-0 rounded-xl px-3 py-2 text-sm border ${
-                  active ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'
+                className={`shrink-0 rounded-md px-3 py-2 text-sm font-medium border transition ${
+                  active ? 'bg-[#172554] text-white border-[#172554]' : 'bg-white text-[#344054] border-[#dbe3ef] hover:border-[#f97363]'
                 }`}
               >
                 {opt}
@@ -411,48 +415,48 @@ export default function ExpensesPage() {
       </div>
 
       {/* List */}
-      <div className="rounded-2xl bg-gray-50 border p-3">
-        {loading && <p className="p-3 text-sm text-gray-600">Loading…</p>}
+      <div className="app-card-muted p-3">
+        {loading && <p className="p-3 text-sm text-[#667085]">Loading…</p>}
         {!loading && filteredExpenses.length === 0 && (
-          <p className="p-3 text-sm text-gray-600">No expenses for this filter.</p>
+          <p className="p-3 text-sm text-[#667085]">No expenses for this filter.</p>
         )}
 
         <div className="space-y-2">
           {filteredExpenses.map(exp => (
-            <div key={exp.id} className="bg-white rounded-2xl border shadow-sm p-4">
+            <div key={exp.id} className="app-card p-4">
               <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm text-gray-500">{exp.category}</p>
+                    <p className="text-sm font-medium text-[#667085]">{exp.category}</p>
                     <span className={`text-xs border px-2 py-0.5 rounded-full ${statusPillClass(exp.receipt_status)}`}>
                       {exp.receipt_status}
                     </span>
                   </div>
 
-                  <p className="font-medium text-gray-900 truncate">{exp.title}</p>
+                  <p className="font-semibold text-[#172554] truncate">{exp.title}</p>
 
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-[#667085] mt-1">
                     {exp.merchant ? `${exp.merchant} · ` : ''}
                     {exp.expense_date}
                   </p>
                 </div>
 
                 <div className="text-right shrink-0">
-                  <p className="font-semibold">{formatMoney(exp.amount, exp.currency)}</p>
-                  <p className="text-xs text-gray-500">{exp.country}</p>
+                  <p className="font-semibold text-[#172554]">{formatMoney(exp.amount, exp.currency)}</p>
+                  <p className="text-xs text-[#667085]">{exp.country}</p>
                 </div>
               </div>
 
               <div className="mt-3 flex items-center justify-between text-sm">
                 <div className="flex gap-3">
-                  <button onClick={() => openEdit(exp)} className="text-blue-600 active:opacity-70" type="button">
+                  <button onClick={() => openEdit(exp)} className="font-medium text-[#f97363] active:opacity-70" type="button">
                     Edit
                   </button>
 
                   {exp.receipt_path && (
                     <button
                       onClick={() => openReceipt(exp.receipt_path!)}
-                      className="text-blue-600 active:opacity-70"
+                      className="font-medium text-[#f97363] active:opacity-70"
                       type="button"
                     >
                       Receipt
@@ -460,7 +464,7 @@ export default function ExpensesPage() {
                   )}
                 </div>
 
-                <button onClick={() => deleteExpense(exp)} className="text-red-600 active:opacity-70" type="button">
+                <button onClick={() => deleteExpense(exp)} className="font-medium text-red-600 active:opacity-70" type="button">
                   Delete
                 </button>
               </div>
@@ -472,18 +476,18 @@ export default function ExpensesPage() {
       {/* Bottom sheet (unchanged; keep your current sheet code) */}
       {open && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={closeSheet} />
+          <div className="absolute inset-0 bg-[#172554]/45 backdrop-blur-[2px]" onClick={closeSheet} />
 
           <div className="absolute inset-x-0 bottom-0">
             <div className="mx-auto max-w-lg">
-              <div className="rounded-t-3xl bg-white border shadow-2xl max-h-[88vh] flex flex-col">
+              <div className="rounded-t-lg bg-white border border-[#dbe3ef] shadow-2xl max-h-[88vh] flex flex-col">
                 <div className="pt-3 flex justify-center">
-                  <div className="h-1.5 w-12 rounded-full bg-gray-300" />
+                  <div className="h-1.5 w-12 rounded-full bg-[#dbe3ef]" />
                 </div>
 
                 <div className="px-5 pt-3 pb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">{isEditing ? 'Edit Expense' : 'Add New Expense'}</h2>
-                  <button onClick={closeSheet} className="text-xl text-gray-500" type="button" aria-label="Close">
+                  <h2 className="text-lg font-semibold text-[#172554]">{isEditing ? 'Edit Expense' : 'Add New Expense'}</h2>
+                  <button onClick={closeSheet} className="text-xl text-[#667085]" type="button" aria-label="Close">
                     ×
                   </button>
                 </div>
@@ -492,7 +496,7 @@ export default function ExpensesPage() {
                   <form id="expense-form" onSubmit={saveExpense} className="space-y-4">
                     {/* Receipt */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">Receipt Image</label>
+                      <label className="text-sm font-medium text-[#344054]">Receipt Image</label>
 
                       <label className="block cursor-pointer">
                         <input
@@ -503,13 +507,13 @@ export default function ExpensesPage() {
                           onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
                         />
 
-                        <div className="border-2 border-dashed rounded-2xl p-6 text-center text-gray-500 bg-gray-50">
+                        <div className="border-2 border-dashed border-[#dbe3ef] rounded-lg p-6 text-center text-[#667085] bg-[#f8fafc] transition hover:border-[#f97363]">
                           <div className="text-2xl mb-2">🧾</div>
-                          <div className="font-medium">Tap to upload receipt</div>
-                          <div className="text-xs text-gray-400">PNG, JPG, PDF up to 10MB</div>
+                          <div className="font-semibold text-[#172554]">Tap to upload receipt</div>
+                          <div className="text-xs text-[#667085]">PNG, JPG, PDF up to 10MB</div>
 
                           {receiptFile && (
-                            <div className="mt-2 text-xs text-gray-700">Selected: {receiptFile.name}</div>
+                            <div className="mt-2 text-xs text-[#344054]">Selected: {receiptFile.name}</div>
                           )}
                         </div>
                       </label>
@@ -519,7 +523,7 @@ export default function ExpensesPage() {
                           type="button"
                           onClick={removeReceipt}
                           disabled={saving}
-                          className="w-full rounded-2xl border border-red-200 bg-red-50 text-red-700 py-3 text-[16px] font-medium disabled:opacity-50 active:scale-[0.99]"
+                          className="w-full rounded-md border border-red-200 bg-red-50 text-red-700 py-3 text-[16px] font-medium disabled:opacity-50 active:scale-[0.99]"
                         >
                           Remove receipt
                         </button>
@@ -528,9 +532,9 @@ export default function ExpensesPage() {
 
                     {/* Receipt status */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">Receipt Status</label>
+                      <label className="text-sm font-medium text-[#344054]">Receipt Status</label>
                       <select
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="form-field"
                         value={receiptStatus}
                         onChange={e => setReceiptStatus(e.target.value as ReceiptStatus)}
                       >
@@ -544,9 +548,9 @@ export default function ExpensesPage() {
 
                     {/* rest of your fields */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">Business Trip</label>
+                      <label className="text-sm font-medium text-[#344054]">Business Trip</label>
                       <input
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="form-field"
                         value={businessTrip}
                         placeholder='e.g London Conference, Client Visit'
                         onChange={e => setBusinessTrip(e.target.value)}
@@ -554,9 +558,9 @@ export default function ExpensesPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">Description *</label>
+                      <label className="text-sm font-medium text-[#344054]">Description *</label>
                       <input
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="form-field"
                         value={description}
                         placeholder='What was the expenses for?'
                         onChange={e => setDescription(e.target.value)}
@@ -569,15 +573,14 @@ export default function ExpensesPage() {
                       <input
                         type="number"
                         step="0.01"
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px] border: 2px
-                        "
+                        className="form-field"
                         placeholder='0.00'
                         value={amount}
                         onChange={e => setAmount(e.target.value)}
                         required
                       />
                       <select
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="form-field"
                         value={currency}
                         onChange={e => setCurrency(e.target.value)}
                       >
@@ -591,10 +594,14 @@ export default function ExpensesPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border: 2px">
                       
                       <select
-                        className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                        className="form-field"
                         value={category}
                         
-                        onChange={e => setCategory(e.target.value as any)}
+                        onChange={e => {
+                          if (isCategoryOption(e.target.value)) {
+                            setCategory(e.target.value)
+                          }
+                        }}
                       >
                         {CATEGORY_OPTIONS.map(c => (
                           <option key={c} value={c}>
@@ -605,7 +612,7 @@ export default function ExpensesPage() {
                       </select>
                       <input
                         type="date"
-                        className="w-full rounded-2xl border bg-white px-4 appearance-none h-12 text-[16px] leading-tight"
+                        className="form-field appearance-none h-12 leading-tight"
                         placeholder="Date"
                         value={expenseDate}
                         onChange={e => setExpenseDate(e.target.value)}
@@ -614,21 +621,21 @@ export default function ExpensesPage() {
                     </div>
 
                     <input
-                      className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                      className="form-field"
                       placeholder="Vendor / Merchant"
                       value={vendor}
                       onChange={e => setVendor(e.target.value)}
                     />
 
                     <input
-                      className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                      className="form-field"
                       placeholder="Notes"
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
                     />
 
                     <input
-                      className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+                      className="form-field"
                       placeholder="Country"
                       value={country}
                       onChange={e => setCountry(e.target.value)}
@@ -638,12 +645,12 @@ export default function ExpensesPage() {
                   </form>
                 </div>
 
-                <div className="border-t bg-white p-4">
+                <div className="border-t border-[#dbe3ef] bg-white p-4">
                   <button
                     form="expense-form"
                     type="submit"
                     disabled={!canSave || saving}
-                    className="w-full rounded-2xl bg-black text-white py-3 text-[16px] font-medium disabled:opacity-50 active:scale-[0.99]"
+                    className="w-full btn-primary py-3 text-[16px]"
                   >
                     {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Add Expense'}
                   </button>

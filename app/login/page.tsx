@@ -93,13 +93,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-2xl border bg-white shadow-sm p-6 space-y-4">
+    <div className="min-h-[78vh] flex items-center justify-center px-4 py-8 bg-[#f6f8fb]">
+      <div className="w-full max-w-sm rounded-lg border border-[#dbe3ef] bg-white p-6 shadow-[0_10px_30px_rgba(23,37,84,0.06)] space-y-5">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight text-[#172554] sm:text-2xl">
             {mode === 'signin' ? 'Sign in' : 'Create account'}
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-[#667085]">
             {mode === 'signin'
               ? 'Access your expenses securely.'
               : 'Create an account to start tracking expenses.'}
@@ -108,7 +108,7 @@ export default function LoginPage() {
 
         <button
           disabled={googleLoading || loading}
-          className="w-full rounded-2xl border bg-white py-3 text-[16px] font-medium disabled:opacity-50 flex items-center justify-center gap-3"
+          className="w-full rounded-md border border-[#dbe3ef] bg-white py-3 text-[16px] font-semibold text-[#172554] shadow-sm disabled:opacity-50 flex items-center justify-center gap-3 transition hover:border-[#f97363]"
           onClick={signInWithGoogle}
           type="button"
         >
@@ -129,7 +129,7 @@ export default function LoginPage() {
 
         <form onSubmit={onSubmit} className="space-y-3">
           <input
-            className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+            className="w-full rounded-md border border-[#dbe3ef] bg-white px-4 py-3 text-[16px] text-[#172554] outline-none transition focus:border-[#f97363] focus:ring-4 focus:ring-[#f97363]/20"
             placeholder="Email"
             type="email"
             value={email}
@@ -138,7 +138,7 @@ export default function LoginPage() {
           />
 
           <input
-            className="w-full rounded-2xl border bg-white px-4 py-3 text-[16px]"
+            className="w-full rounded-md border border-[#dbe3ef] bg-white px-4 py-3 text-[16px] text-[#172554] outline-none transition focus:border-[#f97363] focus:ring-4 focus:ring-[#f97363]/20"
             placeholder="Password"
             type="password"
             value={password}
@@ -148,20 +148,20 @@ export default function LoginPage() {
 
           <button
             disabled={loading}
-            className="w-full rounded-2xl bg-black text-white py-3 text-[16px] font-medium disabled:opacity-50"
+            className="w-full rounded-md bg-[#172554] py-3 text-[16px] font-semibold text-white shadow-sm disabled:opacity-50"
             type="submit"
           >
             {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
           </button>
         </form>
 
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-[#667085]">
           {mode === 'signin' ? (
-            <button className="text-blue-600" onClick={() => setMode('signup')} type="button">
+            <button className="font-medium text-[#f97363]" onClick={() => setMode('signup')} type="button">
               Need an account? Sign up
             </button>
           ) : (
-            <button className="text-blue-600" onClick={() => setMode('signin')} type="button">
+            <button className="font-medium text-[#f97363]" onClick={() => setMode('signin')} type="button">
               Already have an account? Sign in
             </button>
           )}
