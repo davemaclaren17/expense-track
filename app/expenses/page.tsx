@@ -11,6 +11,7 @@ import { useToast } from '@/components/ToastProvider'
 
 type ReceiptStatus = 'Pending' | 'Approved' | 'Rejected' | 'Reimbursed'
 type FilterValue = 'All' | ReceiptStatus
+type ExportStatus = 'All' | 'Pending' | 'Reimbursed'
 
 type ExpenseRow = Expense & {
   receipt_path: string | null
@@ -21,6 +22,7 @@ type ExpenseRow = Expense & {
 const CATEGORY_OPTIONS = ['Mileage', 'Hotel', 'Food & Drinks','Taxi fare','Railfare','Metro','Flights','Hire Car','Fuel Receipts'] as const
 const RECEIPT_STATUS_OPTIONS: ReceiptStatus[] = ['Pending', 'Approved', 'Rejected', 'Reimbursed']
 const FILTER_OPTIONS: FilterValue[] = ['All', ...RECEIPT_STATUS_OPTIONS]
+const EXPORT_STATUS_OPTIONS: ExportStatus[] = ['All', 'Pending', 'Reimbursed']
 const supabase = createSupabaseBrowserClient()
 
 function isCategoryOption(value: string): value is (typeof CATEGORY_OPTIONS)[number] {
@@ -34,6 +36,16 @@ function downloadBlob(blob: Blob, filename: string) {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function csvValue(value: string | number | null) {
+  const text = String(value ?? '')
+
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`
+  }
+
+  return text
 }
 
 function toCSV(expenses: ExpenseRow[]) {
@@ -65,7 +77,20 @@ function toCSV(expenses: ExpenseRow[]) {
     e.receipt_path ?? '',
   ])
 
-  return [headers, ...rows].map(r => r.join(',')).join('\n')
+  return [headers, ...rows].map(r => r.map(csvValue).join(',')).join('\n')
+}
+
+function matchesExportFilters(
+  expense: ExpenseRow,
+  startDate: string,
+  endDate: string,
+  status: ExportStatus
+) {
+  const afterStart = !startDate || expense.expense_date >= startDate
+  const beforeEnd = !endDate || expense.expense_date <= endDate
+  const statusMatches = status === 'All' || expense.receipt_status === status
+
+  return afterStart && beforeEnd && statusMatches
 }
 
 function statusPillClass(status: ReceiptStatus) {
@@ -91,6 +116,9 @@ export default function ExpensesPage() {
 
   // NEW: filter state
   const [filter, setFilter] = useState<FilterValue>('All')
+  const [exportStartDate, setExportStartDate] = useState('')
+  const [exportEndDate, setExportEndDate] = useState('')
+  const [exportStatus, setExportStatus] = useState<ExportStatus>('All')
 
   // Sheet open + mode
   const [open, setOpen] = useState(false)
@@ -123,6 +151,12 @@ export default function ExpensesPage() {
     if (filter === 'All') return expenses
     return expenses.filter(e => e.receipt_status === filter)
   }, [expenses, filter])
+
+  const exportExpenses = useMemo(() => {
+    return expenses.filter(expense => (
+      matchesExportFilters(expense, exportStartDate, exportEndDate, exportStatus)
+    ))
+  }, [expenses, exportEndDate, exportStartDate, exportStatus])
 
   useEffect(() => {
     fetchExpenses()
@@ -346,20 +380,30 @@ export default function ExpensesPage() {
   }
 
   async function exportZIP() {
+    if (exportStartDate && exportEndDate && exportStartDate > exportEndDate) {
+      showToast('error', 'Export start date must be before the end date.')
+      return
+    }
+
+    if (exportExpenses.length === 0) {
+      showToast('error', 'No expenses match those export filters.')
+      return
+    }
+
     try {
       const zip = new JSZip()
-      zip.file('expenses.csv', toCSV(expenses))
+      zip.file('expenses.csv', toCSV(exportExpenses))
 
       const receiptsFolder = zip.folder('receipts')
-      for (const exp of expenses) {
+      for (const exp of exportExpenses) {
         if (!exp.receipt_path) continue
         const { data, error } = await supabase.storage.from('receipts').download(exp.receipt_path)
         if (!error && data) receiptsFolder?.file(exp.receipt_path, data)
       }
 
       const blob = await zip.generateAsync({ type: 'blob' })
-      downloadBlob(blob, 'expenses_export.zip')
-      showToast('success', 'Export downloaded ✅')
+      downloadBlob(blob, `expenses_export_${new Date().toISOString().slice(0, 10)}.zip`)
+      showToast('success', `Export downloaded (${exportExpenses.length} expenses) ✅`)
     } catch {
       showToast('error', 'Export failed. Please try again.')
     }
@@ -389,6 +433,79 @@ export default function ExpensesPage() {
             type="button"
           >
             + Add
+          </button>
+        </div>
+      </div>
+
+      {/* Export filters */}
+      <div className="app-card p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[#172554]">Spreadsheet export</h2>
+            <p className="text-sm text-[#667085]">
+              Choose a date range and reimbursement status before exporting.
+            </p>
+          </div>
+          <p className="shrink-0 rounded-full bg-[#fff1ee] px-3 py-1 text-sm font-semibold text-[#dc5a4d]">
+            {exportExpenses.length} matched
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="space-y-1">
+            <span className="text-sm font-medium text-[#344054]">From</span>
+            <input
+              className="form-field"
+              type="date"
+              value={exportStartDate}
+              onChange={e => setExportStartDate(e.target.value)}
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium text-[#344054]">To</span>
+            <input
+              className="form-field"
+              type="date"
+              value={exportEndDate}
+              onChange={e => setExportEndDate(e.target.value)}
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium text-[#344054]">Status</span>
+            <select
+              className="form-field"
+              value={exportStatus}
+              onChange={e => setExportStatus(e.target.value as ExportStatus)}
+            >
+              {EXPORT_STATUS_OPTIONS.map(status => (
+                <option key={status} value={status}>
+                  {status === 'All' ? 'All statuses' : status}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={exportZIP}
+            className="btn-primary px-3 py-2"
+            type="button"
+          >
+            Export filtered spreadsheet
+          </button>
+          <button
+            onClick={() => {
+              setExportStartDate('')
+              setExportEndDate('')
+              setExportStatus('All')
+            }}
+            className="btn-secondary px-3 py-2"
+            type="button"
+          >
+            Reset filters
           </button>
         </div>
       </div>
