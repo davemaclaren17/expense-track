@@ -19,6 +19,16 @@ type ExpenseRow = {
   receipt_status: ReceiptStatus
 }
 
+type InsightItem = {
+  label: string
+  value: number
+}
+
+const MONTH_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+  month: 'short',
+  year: 'numeric',
+})
+
 function statusPillClass(status: ReceiptStatus) {
   switch (status) {
     case 'Pending':
@@ -39,6 +49,43 @@ function startOfMonthISO() {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   return `${y}-${m}-01`
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monthLabel(key: string) {
+  const [year, month] = key.split('-').map(Number)
+  return MONTH_FORMATTER.format(new Date(year, month - 1, 1))
+}
+
+function getPreviousMonthKey() {
+  const d = new Date()
+  d.setMonth(d.getMonth() - 1)
+  return monthKey(d)
+}
+
+function getCurrentMonthKey() {
+  return monthKey(new Date())
+}
+
+function percentChange(current: number, previous: number) {
+  if (previous === 0) return current > 0 ? 100 : 0
+  return ((current - previous) / previous) * 100
+}
+
+function topItems(items: ExpenseRow[], getLabel: (expense: ExpenseRow) => string, limit = 4): InsightItem[] {
+  const totals = new Map<string, number>()
+
+  for (const expense of items) {
+    const label = getLabel(expense).trim() || 'Unassigned'
+    totals.set(label, (totals.get(label) ?? 0) + Number(expense.amount || 0))
+  }
+
+  return Array.from(totals, ([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit)
 }
 
 export default function DashboardPage() {
@@ -89,6 +136,49 @@ export default function DashboardPage() {
   const allTimeTotal = useMemo(() => {
     return expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
   }, [expenses])
+
+  const currentMonthKey = getCurrentMonthKey()
+  const previousMonthKey = getPreviousMonthKey()
+
+  const monthlyTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+
+    for (const expense of expenses) {
+      const key = expense.expense_date.slice(0, 7)
+      totals.set(key, (totals.get(key) ?? 0) + Number(expense.amount || 0))
+    }
+
+    return totals
+  }, [expenses])
+
+  const previousMonthTotal = monthlyTotals.get(previousMonthKey) ?? 0
+  const monthlyChange = percentChange(monthTotal, previousMonthTotal)
+
+  const categoryTotals = useMemo(() => {
+    return topItems(expenses, expense => expense.category)
+  }, [expenses])
+
+  const merchantTotals = useMemo(() => {
+    return topItems(expenses, expense => expense.merchant ?? 'No merchant')
+  }, [expenses])
+
+  const trendTotals = useMemo(() => {
+    const months: InsightItem[] = []
+    const cursor = new Date()
+    cursor.setDate(1)
+
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(cursor)
+      d.setMonth(cursor.getMonth() - i)
+      const key = monthKey(d)
+      months.push({
+        label: monthLabel(key),
+        value: monthlyTotals.get(key) ?? 0,
+      })
+    }
+
+    return months
+  }, [monthlyTotals])
 
   const recent = expenses.slice(0, 5)
 
@@ -167,6 +257,37 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Insights */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <InsightPanel
+          title="Spending by category"
+          subtitle="Top areas by total value"
+          items={categoryTotals}
+          emptyText="Add expenses to see category insights."
+          accent="coral"
+        />
+
+        <MonthComparison
+          currentLabel={monthLabel(currentMonthKey)}
+          previousLabel={monthLabel(previousMonthKey)}
+          currentTotal={monthTotal}
+          previousTotal={previousMonthTotal}
+          change={monthlyChange}
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TrendPanel items={trendTotals} />
+
+        <InsightPanel
+          title="Top merchants"
+          subtitle="Where spending is concentrated"
+          items={merchantTotals}
+          emptyText="Merchant insights will appear after expenses are added."
+          accent="navy"
+        />
+      </div>
+
       {/* Recent expenses */}
       <div className="app-card">
         <div className="px-4 pt-4 pb-2 flex items-center justify-between">
@@ -221,6 +342,139 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function InsightPanel({
+  title,
+  subtitle,
+  items,
+  emptyText,
+  accent,
+}: {
+  title: string
+  subtitle: string
+  items: InsightItem[]
+  emptyText: string
+  accent: 'coral' | 'navy'
+}) {
+  const max = Math.max(...items.map(item => item.value), 0)
+  const barClass = accent === 'coral' ? 'bg-[#f97363]' : 'bg-[#172554]'
+
+  return (
+    <div className="app-card p-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-[#172554]">{title}</h2>
+        <p className="text-sm text-[#667085]">{subtitle}</p>
+      </div>
+
+      {items.length === 0 && (
+        <p className="text-sm text-[#667085]">{emptyText}</p>
+      )}
+
+      {items.length > 0 && (
+        <div className="space-y-4">
+          {items.map(item => {
+            const width = max > 0 ? Math.max((item.value / max) * 100, 6) : 0
+
+            return (
+              <div key={item.label} className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="min-w-0 truncate text-sm font-medium text-[#172554]">{item.label}</p>
+                  <p className="shrink-0 text-sm font-semibold text-[#172554]">
+                    {formatMoney(item.value, 'GBP')}
+                  </p>
+                </div>
+                <div className="h-2 rounded-full bg-[#edf1f7]">
+                  <div
+                    className={`h-2 rounded-full ${barClass}`}
+                    style={{ width: `${width}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MonthComparison({
+  currentLabel,
+  previousLabel,
+  currentTotal,
+  previousTotal,
+  change,
+}: {
+  currentLabel: string
+  previousLabel: string
+  currentTotal: number
+  previousTotal: number
+  change: number
+}) {
+  const increased = change > 0
+  const flat = change === 0
+  const label = flat ? 'No change' : `${Math.abs(change).toFixed(0)}% ${increased ? 'higher' : 'lower'}`
+
+  return (
+    <div className="app-card overflow-hidden">
+      <div className="bg-[#172554] p-4 text-white">
+        <h2 className="text-lg font-semibold">Month comparison</h2>
+        <p className="text-sm text-white/70">{currentLabel} vs {previousLabel}</p>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-[#dbe3ef]">
+        <div className="p-4">
+          <p className="text-sm text-[#667085]">{currentLabel}</p>
+          <p className="text-xl font-semibold text-[#172554]">{formatMoney(currentTotal, 'GBP')}</p>
+        </div>
+        <div className="p-4">
+          <p className="text-sm text-[#667085]">{previousLabel}</p>
+          <p className="text-xl font-semibold text-[#172554]">{formatMoney(previousTotal, 'GBP')}</p>
+        </div>
+      </div>
+
+      <div className="border-t border-[#edf1f7] p-4">
+        <span className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${
+          increased ? 'border-red-200 bg-red-50 text-red-700' : 'border-teal-200 bg-teal-50 text-teal-700'
+        }`}>
+          {label} than last month
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function TrendPanel({ items }: { items: InsightItem[] }) {
+  const max = Math.max(...items.map(item => item.value), 0)
+
+  return (
+    <div className="app-card p-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-[#172554]">Six-month trend</h2>
+        <p className="text-sm text-[#667085]">Monthly spending pattern</p>
+      </div>
+
+      <div className="flex h-44 items-end gap-3">
+        {items.map(item => {
+          const height = max > 0 ? Math.max((item.value / max) * 100, 8) : 8
+
+          return (
+            <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+              <div className="flex h-28 w-full items-end rounded-md bg-[#edf1f7]">
+                <div
+                  className="w-full rounded-md bg-[#f97363]"
+                  style={{ height: `${height}%` }}
+                  title={`${item.label}: ${formatMoney(item.value, 'GBP')}`}
+                />
+              </div>
+              <p className="w-full truncate text-center text-[11px] font-medium text-[#667085]">{item.label}</p>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
