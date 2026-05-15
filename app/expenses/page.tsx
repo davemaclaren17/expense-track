@@ -439,40 +439,40 @@ export default function ExpensesPage() {
 
       {/* Export filters */}
       <div className="app-card p-4">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-[#172554]">Spreadsheet export</h2>
             <p className="text-sm text-[#667085]">
               Choose a date range and reimbursement status before exporting.
             </p>
           </div>
-          <p className="shrink-0 rounded-full bg-[#fff1ee] px-3 py-1 text-sm font-semibold text-[#dc5a4d]">
+          <p className="w-fit shrink-0 rounded-full bg-[#fff1ee] px-3 py-1 text-sm font-semibold text-[#dc5a4d]">
             {exportExpenses.length} matched
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="space-y-1">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block min-w-0 space-y-1">
             <span className="text-sm font-medium text-[#344054]">From</span>
             <input
-              className="form-field"
+              className="form-field appearance-none"
               type="date"
               value={exportStartDate}
               onChange={e => setExportStartDate(e.target.value)}
             />
           </label>
 
-          <label className="space-y-1">
+          <label className="block min-w-0 space-y-1">
             <span className="text-sm font-medium text-[#344054]">To</span>
             <input
-              className="form-field"
+              className="form-field appearance-none"
               type="date"
               value={exportEndDate}
               onChange={e => setExportEndDate(e.target.value)}
             />
           </label>
 
-          <label className="space-y-1">
+          <label className="block min-w-0 space-y-1">
             <span className="text-sm font-medium text-[#344054]">Status</span>
             <select
               className="form-field"
@@ -488,10 +488,10 @@ export default function ExpensesPage() {
           </label>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
           <button
             onClick={exportZIP}
-            className="btn-primary px-3 py-2"
+            className="btn-primary w-full px-3 py-2 sm:w-auto"
             type="button"
           >
             Export filtered spreadsheet
@@ -502,7 +502,7 @@ export default function ExpensesPage() {
               setExportEndDate('')
               setExportStatus('All')
             }}
-            className="btn-secondary px-3 py-2"
+            className="btn-secondary w-full px-3 py-2 sm:w-auto"
             type="button"
           >
             Reset filters
