@@ -258,7 +258,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Insights */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
         <InsightPanel
           title="Spending by category"
           subtitle="Top areas by total value"
@@ -276,7 +276,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
         <TrendPanel items={trendTotals} />
 
         <InsightPanel
@@ -364,7 +364,7 @@ function InsightPanel({
   const barClass = accent === 'coral' ? 'bg-[#f97363]' : 'bg-[#172554]'
 
   return (
-    <div className="app-card p-4">
+    <div className="app-card min-w-0 overflow-hidden p-4">
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-[#172554]">{title}</h2>
         <p className="text-sm text-[#667085]">{subtitle}</p>
@@ -375,14 +375,14 @@ function InsightPanel({
       )}
 
       {items.length > 0 && (
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {items.map(item => {
             const width = max > 0 ? Math.max((item.value / max) * 100, 6) : 0
 
             return (
-              <div key={item.label} className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 truncate text-sm font-medium text-[#172554]">{item.label}</p>
+              <div key={item.label} className="min-w-0 space-y-2">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#172554]">{item.label}</p>
                   <p className="shrink-0 text-sm font-semibold text-[#172554]">
                     {formatMoney(item.value, 'GBP')}
                   </p>
@@ -420,7 +420,7 @@ function MonthComparison({
   const label = flat ? 'No change' : `${Math.abs(change).toFixed(0)}% ${increased ? 'higher' : 'lower'}`
 
   return (
-    <div className="app-card overflow-hidden">
+    <div className="app-card min-w-0 overflow-hidden">
       <div className="bg-[#172554] p-4 text-white">
         <h2 className="text-lg font-semibold">Month comparison</h2>
         <p className="text-sm text-white/70">{currentLabel} vs {previousLabel}</p>
@@ -452,26 +452,26 @@ function TrendPanel({ items }: { items: InsightItem[] }) {
   const max = Math.max(...items.map(item => item.value), 0)
 
   return (
-    <div className="app-card p-4">
+    <div className="app-card min-w-0 overflow-hidden p-4">
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-[#172554]">Six-month trend</h2>
         <p className="text-sm text-[#667085]">Monthly spending pattern</p>
       </div>
 
-      <div className="flex h-44 items-end gap-3">
+      <div className="flex h-44 min-w-0 items-end gap-1.5 sm:gap-3">
         {items.map(item => {
           const height = max > 0 ? Math.max((item.value / max) * 100, 8) : 8
 
           return (
-            <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-              <div className="flex h-28 w-full items-end rounded-md bg-[#edf1f7]">
+            <div key={item.label} className="flex min-w-0 flex-1 basis-0 flex-col items-center gap-2">
+              <div className="flex h-28 w-full min-w-0 items-end rounded-md bg-[#edf1f7]">
                 <div
                   className="w-full rounded-md bg-[#f97363]"
                   style={{ height: `${height}%` }}
                   title={`${item.label}: ${formatMoney(item.value, 'GBP')}`}
                 />
               </div>
-              <p className="w-full truncate text-center text-[11px] font-medium text-[#667085]">{item.label}</p>
+              <p className="w-full break-words text-center text-[10px] font-medium leading-tight text-[#667085] sm:text-[11px]">{item.label}</p>
             </div>
           )
         })}
