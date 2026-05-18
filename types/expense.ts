@@ -1,5 +1,6 @@
 export type Expense = {
   id: string
+  user_id: string
   title: string
   merchant: string | null
   amount: number

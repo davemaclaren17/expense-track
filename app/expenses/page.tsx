@@ -227,9 +227,15 @@ export default function ExpensesPage() {
   async function upsertReceipt(expenseId: string) {
     if (!receiptFile) return null
 
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    if (userError || !userData.user) {
+      showToast('error', 'Please sign in again before uploading a receipt.')
+      return null
+    }
+
     const extRaw = receiptFile.name.split('.').pop()?.toLowerCase() || 'jpg'
     const ext = extRaw.replace(/[^a-z0-9]/g, '') || 'jpg'
-    const path = `${expenseId}.${ext}`
+    const path = `${userData.user.id}/${expenseId}.${ext}`
 
     const { error: uploadError } = await supabase.storage
       .from('receipts')
@@ -244,6 +250,20 @@ export default function ExpensesPage() {
     }
 
     return path
+  }
+
+  async function attachReceiptToExpense(expenseId: string, receiptPath: string) {
+    const { error } = await supabase
+      .from('expenses')
+      .update({ receipt_path: receiptPath })
+      .eq('id', expenseId)
+
+    if (error) {
+      showToast('error', `Receipt uploaded but could not be attached: ${error.message}`)
+      return false
+    }
+
+    return true
   }
 
   async function removeReceipt() {
@@ -313,10 +333,11 @@ export default function ExpensesPage() {
 
         const receiptPath = await upsertReceipt(inserted.id)
         if (receiptPath) {
-          await supabase.from('expenses').update({ receipt_path: receiptPath }).eq('id', inserted.id)
+          const attached = await attachReceiptToExpense(inserted.id, receiptPath)
+          if (!attached) return
           showToast('success', 'Expense and receipt saved ✅')
         } else {
-          showToast('success', 'Expense saved ✅')
+          showToast(receiptFile ? 'error' : 'success', receiptFile ? 'Expense saved, but receipt upload failed.' : 'Expense saved ✅')
         }
       } else {
         const id = editingId!
@@ -344,11 +365,12 @@ export default function ExpensesPage() {
 
         const receiptPath = await upsertReceipt(id)
         if (receiptPath) {
-          await supabase.from('expenses').update({ receipt_path: receiptPath }).eq('id', id)
+          const attached = await attachReceiptToExpense(id, receiptPath)
+          if (!attached) return
           setExistingReceiptPath(receiptPath)
           showToast('success', 'Expense updated + receipt replaced ✅')
         } else {
-          showToast('success', 'Expense updated ✅')
+          showToast(receiptFile ? 'error' : 'success', receiptFile ? 'Expense updated, but receipt upload failed.' : 'Expense updated ✅')
         }
       }
 
@@ -375,8 +397,13 @@ export default function ExpensesPage() {
   }
 
   async function openReceipt(receiptPath: string) {
-    const { data } = supabase.storage.from('receipts').getPublicUrl(receiptPath)
-    if (data?.publicUrl) window.open(data.publicUrl, '_blank')
+    const { data, error } = await supabase.storage.from('receipts').createSignedUrl(receiptPath, 60)
+    if (error || !data?.signedUrl) {
+      showToast('error', `Could not open receipt: ${error?.message ?? 'Missing receipt URL'}`)
+      return
+    }
+
+    window.open(data.signedUrl, '_blank')
   }
 
   async function exportZIP() {
