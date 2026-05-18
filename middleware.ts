@@ -29,6 +29,17 @@ export async function middleware(request: NextRequest) {
   // Public routes
   if (path.startsWith('/login')) return response
 
+  if (path === '/') {
+    const url = request.nextUrl.clone()
+    url.pathname = user ? '/dashboard' : '/login'
+
+    if (!user) {
+      url.searchParams.set('next', '/dashboard')
+    }
+
+    return NextResponse.redirect(url)
+  }
+
   // Protect app pages
   const protectedRoutes = ['/dashboard', '/expenses']
   const isProtected = protectedRoutes.some(p => path.startsWith(p))

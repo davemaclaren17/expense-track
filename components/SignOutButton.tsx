@@ -13,6 +13,7 @@ export default function SignOutButton() {
       onClick={async () => {
         await supabase.auth.signOut()
         router.replace('/login')
+        router.refresh()
       }}
       type="button"
     >
